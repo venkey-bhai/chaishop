@@ -240,6 +240,19 @@ export async function updateCustomerCreditStatus(id, { is_credit_eligible, credi
 }
 
 /**
+ * Delete customer record (Admin only)
+ */
+export async function deleteCustomer(id, token) {
+  return fetchFromApi(`/api/customers/${id}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+
+/**
  * Fetch detailed customer purchase history, day-by-day orders, and credit ledger
  */
 export async function getCustomerHistory(customerId, params = {}, token = null) {

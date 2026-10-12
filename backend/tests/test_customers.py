@@ -191,6 +191,51 @@ class TestPhase4CustomerManagement(unittest.TestCase):
         self.assertEqual(res.status_code, 403)
         self.assertIn("Rule 61", res.json()["detail"])
 
+    def test_11_admin_deletes_customer(self):
+        """Admin can safely delete a customer who has no outstanding credit balance."""
+        del_phone = f"93{str(uuid.uuid4().int)[:8]}"[:10]
+        create_res = self.client.post("/api/customers", json={
+            "name": "Customer To Delete",
+            "phone": del_phone,
+            "is_credit_eligible": False,
+            "credit_limit": 0.0
+        }, headers=self.admin_headers)
+        self.assertEqual(create_res.status_code, 201)
+        created_id = create_res.json()["id"]
+
+        # Delete customer
+        del_res = self.client.delete(f"/api/customers/{created_id}", headers=self.admin_headers)
+        self.assertEqual(del_res.status_code, 200, del_res.text)
+        self.assertEqual(del_res.json()["deleted_id"], created_id)
+
+        # Confirm customer no longer exists
+        get_res = self.client.get(f"/api/customers/{created_id}", headers=self.admin_headers)
+        self.assertEqual(get_res.status_code, 404)
+
+    def test_12_non_admin_cannot_delete_customer(self):
+        """Staff or Customer users receive 403 Forbidden when attempting to delete customer."""
+        del_phone = f"92{str(uuid.uuid4().int)[:8]}"[:10]
+        create_res = self.client.post("/api/customers", json={
+            "name": "Protected Customer",
+            "phone": del_phone,
+        }, headers=self.admin_headers)
+        self.assertEqual(create_res.status_code, 201)
+        target_id = create_res.json()["id"]
+
+        # Staff attempt
+        staff_del = self.client.delete(f"/api/customers/{target_id}", headers=self.staff_headers)
+        self.assertEqual(staff_del.status_code, 403)
+
+    def test_13_pagination_limit_query_param(self):
+        """Querying customers with limit 10, 25, 50 returns proper item counts."""
+        for page_size in [10, 25, 50]:
+            res = self.client.get(f"/api/customers?page=1&limit={page_size}", headers=self.admin_headers)
+            self.assertEqual(res.status_code, 200)
+            data = res.json()
+            self.assertIn("items", data)
+            self.assertLessEqual(len(data["items"]), page_size)
+            self.assertEqual(data["limit"], page_size)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

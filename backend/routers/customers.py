@@ -394,6 +394,70 @@ def update_credit_status(
     return _format_customer(customer, db)
 
 
+@router.delete(
+    "/{customer_id}",
+    summary="Delete Customer (Admin Only)",
+    description="Deletes a customer record from the directory. Ensures safety by disallowing deletion if outstanding credit balance exists."
+)
+def delete_customer(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    customer = db.query(Customer).options(
+        joinedload(Customer.credit_account)
+    ).filter(Customer.id == customer_id).first()
+
+    if not customer:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Customer with ID {customer_id} does not exist.",
+        )
+
+    # Safety check: prevent deleting customer with unpaid khata / credit debt balance
+    if customer.credit_account and customer.credit_account.current_balance > Decimal("0.00"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot delete customer '{customer.name}' because they have an active outstanding credit balance of ₹{customer.credit_account.current_balance:.2f}. Please settle debt before deleting.",
+        )
+
+    customer_name = customer.name
+
+    try:
+        # Unlink orders so sales history & analytics remain preserved with captured customer info
+        db.query(Order).filter(Order.customer_id == customer_id).update({Order.customer_id: None})
+
+        # Unlink payment records
+        db.query(Payment).filter(Payment.customer_id == customer_id).update({Payment.customer_id: None})
+
+        # Remove credit transactions
+        db.query(CreditTransaction).filter(CreditTransaction.customer_id == customer_id).delete()
+
+        # Remove credit account if present
+        if customer.credit_account:
+            db.delete(customer.credit_account)
+
+        # Unlink linked User if present
+        if customer.user_id:
+            customer.user_id = None
+            db.flush()
+
+        # Delete customer record
+        db.delete(customer)
+        db.commit()
+
+        logger.info(f"Admin {admin_user.name} deleted customer ID={customer_id} ({customer_name})")
+        return {"message": f"Customer '{customer_name}' was deleted successfully.", "deleted_id": customer_id}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to delete customer {customer_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete customer: {str(e)}",
+        )
+
+
+
 # =============================================================
 # Customer Purchase History, Ledger & Monthly Statement
 # =============================================================
