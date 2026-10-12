@@ -92,6 +92,7 @@ class CustomerResponse(BaseModel):
     current_balance: Decimal = Decimal("0.00")
     available_credit: Decimal = Decimal("0.00")
     total_orders_count: int = 0
+    total_spent: Decimal = Decimal("0.00")
     created_at: datetime
     updated_at: datetime
 
@@ -107,3 +108,91 @@ class CustomerPaginationResponse(BaseModel):
     page: int
     limit: int
     total_pages: int
+
+
+class CustomerHistoryItem(BaseModel):
+    name: str
+    quantity: int
+    unit_price: Decimal
+    total_price: Decimal
+    customizations: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CustomerTransactionRecord(BaseModel):
+    id: str
+    type: str  # "ORDER" | "REPAYMENT" | "ADJUSTMENT"
+    date: str
+    time: str
+    created_at: datetime
+    order_id: Optional[int] = None
+    order_number: Optional[str] = None
+    daily_token_number: Optional[int] = None
+    items: List[CustomerHistoryItem] = []
+    product_summary: Optional[str] = None
+    total_bill_amount: Decimal = Decimal("0.00")
+    amount_paid: Decimal = Decimal("0.00")
+    credit_added: Decimal = Decimal("0.00")
+    credit_repaid: Decimal = Decimal("0.00")
+    payment_method: Optional[str] = None
+    payment_status: Optional[str] = None
+    order_status: Optional[str] = None
+    previous_outstanding_credit: Decimal = Decimal("0.00")
+    closing_outstanding_credit: Decimal = Decimal("0.00")
+    description: Optional[str] = None
+    notes: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CustomerDailyGroup(BaseModel):
+    date: str
+    purchases: Decimal = Decimal("0.00")
+    immediate_paid: Decimal = Decimal("0.00")
+    credit_added: Decimal = Decimal("0.00")
+    credit_repaid: Decimal = Decimal("0.00")
+    closing_balance: Decimal = Decimal("0.00")
+    orders_count: int = 0
+
+
+class CustomerFinancialSummary(BaseModel):
+    opening_credit_balance: Decimal = Decimal("0.00")
+    closing_credit_balance: Decimal = Decimal("0.00")
+    total_purchased: Decimal = Decimal("0.00")
+    total_paid_immediate: Decimal = Decimal("0.00")
+    total_paid_total: Decimal = Decimal("0.00")
+    total_credit_added: Decimal = Decimal("0.00")
+    total_credit_repaid: Decimal = Decimal("0.00")
+    total_orders_count: int = 0
+    total_transactions_count: int = 0
+
+
+class CustomerHistoryProfile(BaseModel):
+    id: int
+    user_id: Optional[int] = None
+    name: str
+    phone: str
+    email: Optional[str] = None
+    is_credit_eligible: bool
+    credit_limit: Decimal
+    current_balance: Decimal = Decimal("0.00")
+    available_credit: Decimal = Decimal("0.00")
+    total_orders_count: int = 0
+    total_spent: Decimal = Decimal("0.00")
+    created_at: datetime
+
+
+class CustomerHistoryPagination(BaseModel):
+    total_records: int
+    page: int
+    limit: int
+    total_pages: int
+
+
+class CustomerHistoryResponse(BaseModel):
+    customer: CustomerHistoryProfile
+    summary: CustomerFinancialSummary
+    transactions: List[CustomerTransactionRecord]
+    daily_groups: List[CustomerDailyGroup] = []
+    pagination: CustomerHistoryPagination

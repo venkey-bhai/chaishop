@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
 import {
   getCustomers,
@@ -8,6 +9,7 @@ import {
 } from "../../../services/api";
 
 export default function CustomersPage() {
+  const router = useRouter();
   const { getValidAdminToken } = useAuth();
   const [customerData, setCustomerData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -228,9 +230,30 @@ export default function CustomersPage() {
                 </tr>
               ) : (
                 customerData.items.map((c) => (
-                  <tr key={c.id}>
+                  <tr
+                    key={c.id}
+                    onClick={() => router.push(`/admin/customers/${c.id}`)}
+                    style={{
+                      cursor: "pointer",
+                      transition: "background 0.15s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "rgba(2, 132, 199, 0.05)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "transparent";
+                    }}
+                    title={`Click to view complete purchase history & credit statement for ${c.name}`}
+                  >
                     <td>
-                      <div style={{ fontWeight: "600", color: "var(--text-main)" }}>{c.name}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span style={{ fontWeight: "600", color: "var(--brand-primary, #0284c7)" }}>
+                          {c.name}
+                        </span>
+                        <span style={{ fontSize: "0.7rem", color: "var(--text-dim)", background: "var(--bg-muted, #f1f5f9)", padding: "1px 5px", borderRadius: "4px" }}>
+                          #{c.id}
+                        </span>
+                      </div>
                       {c.email && <div style={{ fontSize: "0.75rem", color: "var(--text-dim)" }}>{c.email}</div>}
                     </td>
                     <td style={{ fontFamily: "monospace", fontSize: "0.85rem" }}>
@@ -252,30 +275,53 @@ export default function CustomersPage() {
                       </span>
                     </td>
                     <td style={{ fontWeight: "600" }}>
-                      ₹{c.credit_limit}
+                      ₹{Number(c.credit_limit || 0).toFixed(2)}
                     </td>
                     <td style={{ fontWeight: "600", color: Number(c.current_balance) > 0 ? "var(--status-err)" : "var(--status-success)" }}>
-                      ₹{c.current_balance}
+                      ₹{Number(c.current_balance || 0).toFixed(2)}
                     </td>
-                    <td>
-                      ₹{c.total_spent || 0}
+                    <td style={{ fontWeight: "600" }}>
+                      ₹{Number(c.total_spent || 0).toFixed(2)}
                     </td>
-                    <td style={{ textAlign: "right" }}>
-                      <button
-                        onClick={() => handleToggleCredit(c)}
-                        style={{
-                          background: c.is_credit_eligible ? "rgba(220, 38, 38, 0.1)" : "rgba(22, 163, 74, 0.1)",
-                          color: c.is_credit_eligible ? "var(--status-err)" : "var(--status-success)",
-                          border: `1px solid ${c.is_credit_eligible ? "rgba(220, 38, 38, 0.25)" : "rgba(22, 163, 74, 0.25)"}`,
-                          borderRadius: "6px",
-                          padding: "6px 12px",
-                          fontSize: "0.78rem",
-                          fontWeight: "600",
-                          cursor: "pointer",
-                        }}
-                      >
-                        {c.is_credit_eligible ? "Revoke Credit" : "Approve Credit"}
-                      </button>
+                    <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                      <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", alignItems: "center" }}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleCredit(c);
+                          }}
+                          style={{
+                            background: c.is_credit_eligible ? "rgba(220, 38, 38, 0.1)" : "rgba(22, 163, 74, 0.1)",
+                            color: c.is_credit_eligible ? "var(--status-err)" : "var(--status-success)",
+                            border: `1px solid ${c.is_credit_eligible ? "rgba(220, 38, 38, 0.25)" : "rgba(22, 163, 74, 0.25)"}`,
+                            borderRadius: "6px",
+                            padding: "6px 12px",
+                            fontSize: "0.78rem",
+                            fontWeight: "600",
+                            cursor: "pointer",
+                          }}
+                        >
+                          {c.is_credit_eligible ? "Revoke Credit" : "Approve Credit"}
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/admin/customers/${c.id}`);
+                          }}
+                          className="btn-secondary"
+                          style={{
+                            padding: "6px 12px",
+                            fontSize: "0.78rem",
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                          }}
+                          title="View complete purchase history & credit statement"
+                        >
+                          Details ➔
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))

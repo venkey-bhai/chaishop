@@ -239,6 +239,29 @@ export async function updateCustomerCreditStatus(id, { is_credit_eligible, credi
   });
 }
 
+/**
+ * Fetch detailed customer purchase history, day-by-day orders, and credit ledger
+ */
+export async function getCustomerHistory(customerId, params = {}, token = null) {
+  const query = new URLSearchParams();
+  if (params.mode) query.append("mode", params.mode);
+  if (params.date) query.append("date", params.date);
+  if (params.month) query.append("month", params.month);
+  if (params.year) query.append("year", params.year);
+  if (params.search) query.append("search", params.search);
+  if (params.payment_method) query.append("payment_method", params.payment_method);
+  if (params.payment_status) query.append("payment_status", params.payment_status);
+  if (params.credit_filter) query.append("credit_filter", params.credit_filter);
+  if (params.page) query.append("page", params.page);
+  if (params.limit) query.append("limit", params.limit);
+
+  const q = query.toString() ? `?${query.toString()}` : "";
+  const headers = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  return fetchFromApi(`/api/customers/${customerId}/history${q}`, { headers });
+}
+
 // -------------------------------------------------------------
 // Phase 5: Menu Management API Services
 // -------------------------------------------------------------
@@ -705,6 +728,7 @@ export default {
   createCustomer,
   updateCustomer,
   updateCustomerCreditStatus,
+  getCustomerHistory,
   getCategories,
   createCategory,
   updateCategory,
