@@ -129,39 +129,68 @@ def create_order(
             detail="Order must contain at least one item."
         )
 
-    # 1. Resolve Customer Identity
-    customer_obj: Optional[Customer] = None
-    customer_id: Optional[int] = payload.customer_id
+    # 1. Resolve & Enforce Mandatory Customer Identity (Phone No & Customer Number)
     customer_name: str = (payload.customer_name or "").strip()
     customer_phone: str = (payload.customer_phone or "").strip()
 
+    # Clean phone number to digits only
+    clean_phone = "".join(ch for ch in customer_phone if ch.isdigit())
+
+    # Mandatory Phone Number & Name Validation
+    if not clean_phone or len(clean_phone) < 10 or clean_phone == "0000000000":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Customer phone number is mandatory to place an order (must be a valid 10-digit mobile number)."
+        )
+
+    if not customer_name or len(customer_name) < 2:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Customer name is mandatory to place an order (minimum 2 characters required)."
+        )
+
+    customer_phone = clean_phone[-10:]
+
+    customer_obj: Optional[Customer] = None
+    customer_id: Optional[int] = payload.customer_id
+
+    # Check if authenticated customer
     if opt_user and opt_user.customer:
         customer_obj = opt_user.customer
         customer_id = customer_obj.id
-        if not customer_name:
-            customer_name = customer_obj.name
-        if not customer_phone:
-            customer_phone = customer_obj.phone
     elif customer_id:
         customer_obj = db.query(Customer).filter(Customer.id == customer_id).first()
-        if customer_obj:
-            if not customer_name:
-                customer_name = customer_obj.name
-            if not customer_phone:
-                customer_phone = customer_obj.phone
-    elif customer_phone:
-        customer_obj = db.query(Customer).filter(Customer.phone == customer_phone).first()
-        if customer_obj:
-            customer_id = customer_obj.id
-            if not customer_name:
-                customer_name = customer_obj.name
 
-    if not customer_name:
-        customer_name = f"Table {payload.table_number}" if payload.table_number else (
-            f"Counter {payload.counter_number}" if payload.counter_number else "Guest Customer"
+    # Look up existing customer record by phone number
+    if not customer_obj:
+        customer_obj = db.query(Customer).filter(Customer.phone == customer_phone).first()
+
+    # If customer does not exist in the database, automatically register them so they have an official Customer Number (ID)
+    if not customer_obj:
+        customer_obj = Customer(
+            name=customer_name,
+            phone=customer_phone,
+            is_credit_eligible=False,
+            credit_limit=Decimal("0.00"),
         )
+        db.add(customer_obj)
+        db.flush()
+
+        # Initialize credit account
+        credit_account = CreditAccount(
+            customer_id=customer_obj.id,
+            credit_limit=Decimal("0.00"),
+            current_balance=Decimal("0.00"),
+            is_active=False,
+        )
+        db.add(credit_account)
+        db.flush()
+
+    customer_id = customer_obj.id
+    if not customer_name:
+        customer_name = customer_obj.name
     if not customer_phone:
-        customer_phone = "0000000000"
+        customer_phone = customer_obj.phone
 
     # 2. Sequential Daily Token Calculation (Rule from Section 11 & Daily Reset)
     now_utc = datetime.now(timezone.utc)

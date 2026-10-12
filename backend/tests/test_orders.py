@@ -122,9 +122,10 @@ class TestPhase7OrderPlacementAndTokens(unittest.TestCase):
         )
 
     def test_01_public_guest_order_and_token(self):
-        """Public guest places order at Table 3; verifies token and order number format."""
+        """Public guest places order at Table 3; verifies token, customer phone and customer ID."""
         payload = {
             "customer_name": "Ramesh Guest",
+            "customer_phone": "9876543210",
             "table_number": "3",
             "payment_method": "CASH",
             "items": [
@@ -144,6 +145,9 @@ class TestPhase7OrderPlacementAndTokens(unittest.TestCase):
         self.assertTrue(data["order_number"].startswith("ORD-"))
         self.assertEqual(float(data["total_amount"]), 50.00)  # 2 x 25.00
         self.assertEqual(data["order_status"], "PENDING")
+        self.assertEqual(data["customer_name"], "Ramesh Guest")
+        self.assertEqual(data["customer_phone"], "9876543210")
+        self.assertIsNotNone(data["customer_id"])
         self.assertIn("Table #3", data["notes"])
         self.assertEqual(len(data["items"]), 1)
         self.assertEqual(data["items"][0]["item_name"], "Hyderabadi Irani Chai")
@@ -155,6 +159,8 @@ class TestPhase7OrderPlacementAndTokens(unittest.TestCase):
     def test_02_sequential_daily_token_increment(self):
         """Sequential order strictly increments daily token number by 1."""
         payload = {
+            "customer_name": "Second Guest",
+            "customer_phone": "9876543211",
             "table_number": "5",
             "payment_method": "UPI",
             "items": [
@@ -172,6 +178,8 @@ class TestPhase7OrderPlacementAndTokens(unittest.TestCase):
         """Ordering a stock-tracked item automatically decrements available quantity."""
         # Initial stock was 10
         payload = {
+            "customer_name": "Stock Customer",
+            "customer_phone": "9876543212",
             "counter_number": "1",
             "payment_method": "CASH",
             "items": [
@@ -189,6 +197,8 @@ class TestPhase7OrderPlacementAndTokens(unittest.TestCase):
     def test_04_insufficient_stock_rejection(self):
         """Ordering more than current stock is rejected with 400 Bad Request."""
         payload = {
+            "customer_name": "Over Stock Customer",
+            "customer_phone": "9876543213",
             "payment_method": "CASH",
             "items": [
                 {"menu_item_id": self.item_tracked["id"], "quantity": 50}  # Only 7 left
@@ -201,6 +211,8 @@ class TestPhase7OrderPlacementAndTokens(unittest.TestCase):
     def test_05_unavailable_item_rejection(self):
         """Ordering an 86'd item is rejected with 400 Bad Request."""
         payload = {
+            "customer_name": "Unavailable Customer",
+            "customer_phone": "9876543214",
             "payment_method": "CASH",
             "items": [
                 {"menu_item_id": self.item_unavailable["id"], "quantity": 1}
@@ -213,6 +225,7 @@ class TestPhase7OrderPlacementAndTokens(unittest.TestCase):
     def test_06_ineligible_credit_order_rejected(self):
         """Customer not approved for credit cannot purchase on CREDIT (Rule 61)."""
         payload = {
+            "customer_name": "Regular Non-Credit Customer",
             "customer_phone": self.phone_regular,
             "payment_method": "CREDIT",
             "items": [
@@ -226,6 +239,7 @@ class TestPhase7OrderPlacementAndTokens(unittest.TestCase):
     def test_07_eligible_credit_order_succeeds(self):
         """Approved credit customer purchases on credit; balance increases and ledger logs transaction."""
         payload = {
+            "customer_name": "Approved VIP Credit Customer",
             "customer_phone": self.phone_credit,
             "payment_method": "CREDIT",
             "items": [
@@ -248,6 +262,7 @@ class TestPhase7OrderPlacementAndTokens(unittest.TestCase):
         """Ordering on credit beyond available limit is rejected with 400 Bad Request."""
         # VIP limit is 500, balance is 100, remaining is 400. Ordering 20 x 25 = 500 exceeds available credit!
         payload = {
+            "customer_name": "Approved VIP Credit Customer",
             "customer_phone": self.phone_credit,
             "payment_method": "CREDIT",
             "items": [
@@ -311,6 +326,72 @@ class TestPhase7OrderPlacementAndTokens(unittest.TestCase):
         self.assertIsInstance(orders, list)
         self.assertGreaterEqual(len(orders), 1)
         self.assertEqual(orders[0]["customer_phone"], self.phone_credit)
+
+    def test_12_mandatory_customer_phone_validation(self):
+        """Order placement strictly fails if phone is missing, too short, or all zeros."""
+        base_item = [{"menu_item_id": self.item_chai["id"], "quantity": 1}]
+
+        # 1. Missing phone
+        res1 = self.client.post("/api/orders", json={
+            "customer_name": "Test Missing Phone",
+            "items": base_item
+        })
+        self.assertEqual(res1.status_code, 422)
+
+        # 2. Too short phone (< 10 digits)
+        res2 = self.client.post("/api/orders", json={
+            "customer_name": "Test Short Phone",
+            "customer_phone": "98765",
+            "items": base_item
+        })
+        self.assertEqual(res2.status_code, 422)
+
+        # 3. All zeros phone (0000000000)
+        res3 = self.client.post("/api/orders", json={
+            "customer_name": "Test Zero Phone",
+            "customer_phone": "0000000000",
+            "items": base_item
+        })
+        self.assertEqual(res3.status_code, 422)
+
+    def test_13_mandatory_customer_name_validation(self):
+        """Order placement strictly fails if customer name is missing or too short."""
+        base_item = [{"menu_item_id": self.item_chai["id"], "quantity": 1}]
+
+        # 1. Missing name
+        res1 = self.client.post("/api/orders", json={
+            "customer_phone": "9876543299",
+            "items": base_item
+        })
+        self.assertEqual(res1.status_code, 422)
+
+        # 2. Too short name (< 2 chars)
+        res2 = self.client.post("/api/orders", json={
+            "customer_name": "A",
+            "customer_phone": "9876543299",
+            "items": base_item
+        })
+        self.assertEqual(res2.status_code, 422)
+
+    def test_14_auto_registers_customer_and_allocates_customer_id(self):
+        """Order placement for new phone number automatically creates Customer record and assigns customer_id."""
+        unique_phone = f"99{str(uuid.uuid4().int)[:8]}"[:10]
+        res = self.client.post("/api/orders", json={
+            "customer_name": "New Auto Customer",
+            "customer_phone": unique_phone,
+            "items": [{"menu_item_id": self.item_chai["id"], "quantity": 1}]
+        })
+        self.assertEqual(res.status_code, 201)
+        data = res.json()
+        self.assertIsNotNone(data["customer_id"])
+        self.assertEqual(data["customer_phone"], unique_phone)
+        self.assertEqual(data["customer_name"], "New Auto Customer")
+
+        # Verify Customer row exists in database via customer search
+        cust_search = self.client.get(f"/api/customers?search={unique_phone}", headers=self.admin_headers)
+        self.assertEqual(cust_search.status_code, 200)
+        cust_list = cust_search.json()["items"]
+        self.assertTrue(any(c["phone"] == unique_phone for c in cust_list))
 
 
 if __name__ == "__main__":

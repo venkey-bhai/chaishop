@@ -48,25 +48,34 @@ class OrderItemResponse(BaseModel):
 class OrderCreate(BaseModel):
     """
     Payload for placing a new order via Customer QR menu or Counter POS.
+    Both Customer Name and Customer Phone Number are mandatory.
     """
-    customer_name: Optional[str] = Field(default=None, max_length=100, description="Customer name for token callout")
-    customer_phone: Optional[str] = Field(default=None, max_length=15, description="Mobile number for credit or order receipt")
-    customer_id: Optional[int] = Field(default=None, description="Optional Customer ID if logged in")
+    customer_name: str = Field(..., min_length=2, max_length=100, description="Mandatory customer name for token callout", example="Ramesh Kumar")
+    customer_phone: str = Field(..., description="Mandatory customer 10-digit mobile number", example="9876543210")
+    customer_id: Optional[int] = Field(default=None, description="Optional Customer database ID / number")
     table_number: Optional[str] = Field(default=None, max_length=20, description="Dine-in table number from QR scan")
     counter_number: Optional[str] = Field(default=None, max_length=20, description="Counter pickup number from QR scan")
     payment_method: PaymentMethod = Field(default=PaymentMethod.CASH, description="CASH, UPI, CARD, or CREDIT")
     notes: Optional[str] = Field(default=None, max_length=300, description="Special preparation instructions")
     items: List[OrderItemCreate] = Field(..., min_length=1, description="List of items ordered")
 
+    @field_validator("customer_name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        cleaned = (v or "").strip()
+        if len(cleaned) < 2:
+            raise ValueError("Customer name is mandatory and must be at least 2 characters")
+        return cleaned
+
     @field_validator("customer_phone")
     @classmethod
-    def validate_phone(cls, v: Optional[str]) -> Optional[str]:
-        if v:
-            clean = "".join(ch for ch in v if ch.isdigit())
-            if len(clean) < 10:
-                raise ValueError("Phone number must have at least 10 digits")
-            return clean[-10:]
-        return v
+    def validate_phone(cls, v: str) -> str:
+        cleaned = "".join(ch for ch in (v or "") if ch.isdigit())
+        if len(cleaned) < 10:
+            raise ValueError("Customer phone number is mandatory and must contain at least 10 digits")
+        if cleaned == "0000000000":
+            raise ValueError("Valid customer phone number is mandatory (cannot be all zeros)")
+        return cleaned[-10:]
 
 
 class OrderStatusUpdate(BaseModel):

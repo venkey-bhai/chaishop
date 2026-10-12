@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { getMenuCatalog, getQrInfo, createOrder } from "../../services/api";
+import { getMenuCatalog, getQrInfo, createOrder, searchCustomers } from "../../services/api";
 
 function CustomerMenuContent() {
   const searchParams = useSearchParams();
@@ -32,6 +32,7 @@ function CustomerMenuContent() {
   const [showCheckout, setShowCheckout] = useState(false);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [matchedCustomer, setMatchedCustomer] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState("CASH");
   const [orderNotes, setOrderNotes] = useState("");
   const [submittingOrder, setSubmittingOrder] = useState(false);
@@ -161,14 +162,61 @@ function CustomerMenuContent() {
     } catch (e) {}
   }
 
+  async function handlePhoneChange(val) {
+    const digits = val.replace(/\D/g, "").slice(0, 15);
+    setCustomerPhone(digits);
+    if (orderError) setOrderError("");
+    if (digits.length >= 10) {
+      try {
+        const results = await searchCustomers(digits);
+        if (results && results.length > 0) {
+          const match = results.find((c) => (c.phone || c.mobile_number) === digits.slice(-10)) || results[0];
+          if (match) {
+            setMatchedCustomer(match);
+            if (!customerName.trim()) {
+              setCustomerName(match.name);
+            }
+            return;
+          }
+        }
+      } catch (err) {
+        // silent lookup failure
+      }
+      setMatchedCustomer(null);
+    } else {
+      setMatchedCustomer(null);
+    }
+  }
+
   async function handlePlaceOrder() {
     if (cartItems.length === 0) return;
+
+    // Strict validation: Phone Number and Customer Name are mandatory
+    const cleanPhone = (customerPhone || "").replace(/\D/g, "");
+    const cleanName = (customerName || "").trim();
+
+    if (!cleanName || cleanName.length < 2) {
+      setOrderError("Customer Name is mandatory to place an order (minimum 2 characters).");
+      return;
+    }
+
+    if (!cleanPhone || cleanPhone.length < 10) {
+      setOrderError("Customer Phone Number is mandatory to place an order (minimum 10 digits required).");
+      return;
+    }
+
+    if (cleanPhone === "0000000000") {
+      setOrderError("Please enter a valid active 10-digit mobile number.");
+      return;
+    }
+
     setSubmittingOrder(true);
     setOrderError("");
     try {
       const payload = {
-        customer_name: customerName || (tableNumber ? `Table ${tableNumber} Guest` : "Walk-in Guest"),
-        customer_phone: customerPhone || "0000000000",
+        customer_name: cleanName,
+        customer_phone: cleanPhone.slice(-10),
+        customer_id: matchedCustomer?.id || null,
         table_number: tableNumber || null,
         counter_number: counterNumber || null,
         payment_method: paymentMethod,
@@ -905,49 +953,96 @@ function CustomerMenuContent() {
               </div>
             </div>
 
-            {/* Customer Inputs */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "14px" }}>
-              <div>
-                <label style={{ fontSize: "0.8rem", color: "#9ca3af", display: "block", marginBottom: "4px" }}>
-                  Your Name (Optional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Ramesh"
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  style={{
-                    width: "100%",
-                    background: "rgba(255, 255, 255, 0.05)",
-                    border: "1px solid rgba(255, 255, 255, 0.12)",
-                    borderRadius: "8px",
-                    padding: "9px 12px",
-                    color: "#fff",
-                    fontSize: "0.85rem",
-                    outline: "none"
-                  }}
-                />
+            {/* Customer Inputs - Phone No & Customer Identity are Mandatory */}
+            <div style={{ marginBottom: "14px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                <div>
+                  <label style={{ fontSize: "0.8rem", color: "#d1d5db", display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                    <span>Customer Name <span style={{ color: "#ef4444" }}>*</span></span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Ramesh Kumar"
+                    value={customerName}
+                    onChange={(e) => {
+                      setCustomerName(e.target.value);
+                      if (orderError) setOrderError("");
+                    }}
+                    style={{
+                      width: "100%",
+                      background: "rgba(255, 255, 255, 0.05)",
+                      border: !customerName.trim() ? "1px solid rgba(239, 68, 68, 0.4)" : "1px solid rgba(16, 185, 129, 0.4)",
+                      borderRadius: "8px",
+                      padding: "9px 12px",
+                      color: "#fff",
+                      fontSize: "0.85rem",
+                      outline: "none"
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: "0.8rem", color: "#d1d5db", display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                    <span>Phone No. <span style={{ color: "#ef4444" }}>* (10 Digits)</span></span>
+                  </label>
+                  <input
+                    type="tel"
+                    maxLength={10}
+                    placeholder="e.g. 9876543210"
+                    value={customerPhone}
+                    onChange={(e) => handlePhoneChange(e.target.value)}
+                    style={{
+                      width: "100%",
+                      background: "rgba(255, 255, 255, 0.05)",
+                      border: customerPhone.length === 10 ? "1px solid rgba(16, 185, 129, 0.5)" : "1px solid rgba(239, 68, 68, 0.4)",
+                      borderRadius: "8px",
+                      padding: "9px 12px",
+                      color: "#fff",
+                      fontSize: "0.85rem",
+                      outline: "none"
+                    }}
+                  />
+                </div>
               </div>
-              <div>
-                <label style={{ fontSize: "0.8rem", color: "#9ca3af", display: "block", marginBottom: "4px" }}>
-                  Phone Number
-                </label>
-                <input
-                  type="tel"
-                  placeholder="e.g. 9876543210"
-                  value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                  style={{
-                    width: "100%",
-                    background: "rgba(255, 255, 255, 0.05)",
-                    border: "1px solid rgba(255, 255, 255, 0.12)",
+
+              {/* Live Customer Number & Verification Status */}
+              <div style={{ marginTop: "8px" }}>
+                {matchedCustomer ? (
+                  <div style={{
+                    background: "rgba(16, 185, 129, 0.12)",
+                    border: "1px solid rgba(16, 185, 129, 0.3)",
+                    padding: "8px 12px",
                     borderRadius: "8px",
-                    padding: "9px 12px",
-                    color: "#fff",
-                    fontSize: "0.85rem",
-                    outline: "none"
-                  }}
-                />
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center"
+                  }}>
+                    <span style={{ fontSize: "0.8rem", color: "#10b981", fontWeight: "600" }}>
+                      ✓ Customer #{matchedCustomer.id}: {matchedCustomer.name}
+                    </span>
+                    <span style={{ fontSize: "0.75rem", color: "#9ca3af" }}>
+                      Credit: ₹{Number(matchedCustomer.credit_account?.current_balance || 0).toFixed(2)}
+                    </span>
+                  </div>
+                ) : customerPhone.length === 10 ? (
+                  <div style={{
+                    background: "rgba(56, 189, 248, 0.1)",
+                    border: "1px solid rgba(56, 189, 248, 0.25)",
+                    padding: "6px 12px",
+                    borderRadius: "8px",
+                    fontSize: "0.78rem",
+                    color: "#38bdf8"
+                  }}>
+                    🆕 New Customer — Official Customer Number will be assigned upon ordering
+                  </div>
+                ) : customerPhone.length > 0 ? (
+                  <div style={{ fontSize: "0.75rem", color: "#f59e0b", paddingLeft: "4px" }}>
+                    ⚠️ Enter 10-digit mobile number ({10 - customerPhone.length} digits left)
+                  </div>
+                ) : (
+                  <div style={{ fontSize: "0.75rem", color: "#9ca3af", paddingLeft: "4px" }}>
+                    ℹ️ Both Customer Name and 10-digit Phone No. are mandatory to place order.
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1010,6 +1105,22 @@ function CustomerMenuContent() {
                 }}
               />
             </div>
+
+            {/* Order Validation Error Banner */}
+            {orderError && (
+              <div style={{
+                background: "rgba(239, 68, 68, 0.15)",
+                border: "1px solid rgba(239, 68, 68, 0.35)",
+                borderRadius: "8px",
+                padding: "10px 14px",
+                color: "#f87171",
+                fontSize: "0.82rem",
+                fontWeight: "600",
+                marginBottom: "14px"
+              }}>
+                ❌ {orderError}
+              </div>
+            )}
 
             {/* Subtotal & Confirm CTA */}
             <button
@@ -1094,6 +1205,14 @@ function CustomerMenuContent() {
 
             {/* Summary Details */}
             <div style={{ background: "rgba(255, 255, 255, 0.04)", borderRadius: "12px", padding: "14px", marginBottom: "20px", textAlign: "left" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px", fontSize: "0.85rem" }}>
+                <span style={{ color: "#9ca3af" }}>Customer:</span>
+                <span style={{ color: "#fff", fontWeight: "600" }}>{confirmedOrder.customer_name} ({confirmedOrder.customer_phone})</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px", fontSize: "0.85rem" }}>
+                <span style={{ color: "#9ca3af" }}>Customer Number:</span>
+                <span style={{ color: "#38bdf8", fontWeight: "700" }}>#{confirmedOrder.customer_id || "Assigned"}</span>
+              </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px", fontSize: "0.85rem" }}>
                 <span style={{ color: "#9ca3af" }}>Status:</span>
                 <span style={{ color: "#10b981", fontWeight: "700" }}>{confirmedOrder.order_status}</span>
