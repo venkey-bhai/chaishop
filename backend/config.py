@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     SHOP_ADDRESS: str = Field(default="12 Market Square, Station Road")
     UPI_ID: str = Field(default="chaiflow@upi")
     FSSAI_LICENSE: str = Field(default="21524012000892")
+    ADMIN_REGISTRATION_SECRET: str = Field(default="CHAIFLOW_ADMIN_SECRET_2026")
 
     @property
     def cors_origins_list(self) -> List[str]:

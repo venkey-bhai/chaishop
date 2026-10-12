@@ -34,25 +34,24 @@ function LoginForm() {
     try {
       const res = await login(trimmedMobile, password);
       const user = res?.user;
+      const role = (user?.role || "").toUpperCase();
 
       if (redirectUrl) {
-        router.push(redirectUrl);
-      } else if (user?.role === "ADMIN" || user?.role === "STAFF") {
+        if (role === "CUSTOMER" && redirectUrl.startsWith("/admin")) {
+          router.push("/customer");
+        } else {
+          router.push(redirectUrl);
+        }
+      } else if (role === "ADMIN" || role === "STAFF") {
         router.push("/admin/dashboard");
       } else {
-        router.push("/menu");
+        router.push("/customer");
       }
     } catch (err) {
       setErrorMsg(err.message || "Invalid mobile number or password.");
     } finally {
       setLoading(false);
     }
-  }
-
-  function handleQuickFill(mobile, pass) {
-    setMobileNumber(mobile);
-    setPassword(pass);
-    setErrorMsg("");
   }
 
   return (
@@ -72,8 +71,8 @@ function LoginForm() {
           width: "100%",
           maxWidth: "440px",
           padding: "36px 32px",
-          borderRadius: "18px",
-          boxShadow: "0 10px 25px -5px rgba(15, 118, 110, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.04)",
+          borderRadius: "20px",
+          boxShadow: "0 12px 30px -6px rgba(15, 118, 110, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.04)",
           background: "#FFFFFF",
           border: "1px solid var(--border-subtle)",
         }}
@@ -82,24 +81,24 @@ function LoginForm() {
         <div style={{ textAlign: "center", marginBottom: "28px" }}>
           <div
             style={{
-              width: "60px",
-              height: "60px",
+              width: "64px",
+              height: "64px",
               margin: "0 auto 14px auto",
-              borderRadius: "16px",
+              borderRadius: "18px",
               background: "linear-gradient(135deg, #0F766E 0%, #115E59 100%)",
               color: "#FFFFFF",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: "1.9rem",
-              boxShadow: "0 4px 14px rgba(15, 118, 110, 0.3)",
+              fontSize: "2rem",
+              boxShadow: "0 6px 18px rgba(15, 118, 110, 0.3)",
             }}
           >
             ☕
           </div>
           <h1
             style={{
-              fontSize: "1.5rem",
+              fontSize: "1.6rem",
               fontWeight: "800",
               color: "var(--text-main)",
               letterSpacing: "-0.02em",
@@ -114,7 +113,7 @@ function LoginForm() {
               marginTop: "6px",
             }}
           >
-            Access the tea shop management and ordering portal
+            Sign in to access your Shop Account or Customer Dashboard
           </p>
         </div>
 
@@ -124,10 +123,10 @@ function LoginForm() {
             style={{
               marginBottom: "20px",
               padding: "12px 14px",
-              borderRadius: "8px",
+              borderRadius: "10px",
               background: "#FEF2F2",
               border: "1px solid #FECACA",
-              color: "var(--status-err)",
+              color: "#B91C1C",
               fontSize: "0.85rem",
               fontWeight: "500",
               display: "flex",
@@ -135,7 +134,7 @@ function LoginForm() {
               gap: "8px",
             }}
           >
-            <span>⚠️</span>
+            <span style={{ fontSize: "1.1rem" }}>⚠️</span>
             <span>{errorMsg}</span>
           </div>
         )}
@@ -146,7 +145,7 @@ function LoginForm() {
             <label
               style={{
                 display: "block",
-                fontSize: "0.82rem",
+                fontSize: "0.84rem",
                 fontWeight: "600",
                 color: "var(--text-main)",
                 marginBottom: "6px",
@@ -157,16 +156,20 @@ function LoginForm() {
             <div style={{ position: "relative" }}>
               <input
                 type="tel"
-                placeholder="10-digit number (e.g. 9999999999)"
+                placeholder="10-digit number (e.g. 9876543210)"
                 value={mobileNumber}
                 onChange={(e) => setMobileNumber(e.target.value)}
                 maxLength={10}
                 required
                 style={{
                   width: "100%",
-                  paddingLeft: "12px",
+                  padding: "12px 14px",
                   fontSize: "0.95rem",
                   letterSpacing: "0.02em",
+                  border: "1px solid var(--border-subtle)",
+                  borderRadius: "10px",
+                  background: "#F8FAFC",
+                  outline: "none",
                 }}
               />
             </div>
@@ -183,7 +186,7 @@ function LoginForm() {
             >
               <label
                 style={{
-                  fontSize: "0.82rem",
+                  fontSize: "0.84rem",
                   fontWeight: "600",
                   color: "var(--text-main)",
                 }}
@@ -200,8 +203,12 @@ function LoginForm() {
                 required
                 style={{
                   width: "100%",
-                  paddingRight: "44px",
+                  padding: "12px 44px 12px 14px",
                   fontSize: "0.95rem",
+                  border: "1px solid var(--border-subtle)",
+                  borderRadius: "10px",
+                  background: "#F8FAFC",
+                  outline: "none",
                 }}
               />
               <button
@@ -209,16 +216,18 @@ function LoginForm() {
                 onClick={() => setShowPassword(!showPassword)}
                 style={{
                   position: "absolute",
-                  right: "10px",
+                  right: "12px",
                   top: "50%",
                   transform: "translateY(-50%)",
                   background: "transparent",
                   border: "none",
                   cursor: "pointer",
                   color: "var(--text-muted)",
-                  fontSize: "1rem",
+                  fontSize: "1.1rem",
+                  padding: "4px",
                 }}
                 title={showPassword ? "Hide password" : "Show password"}
+                aria-label="Toggle password visibility"
               >
                 {showPassword ? "🙈" : "👁️"}
               </button>
@@ -231,88 +240,58 @@ function LoginForm() {
             className="btn-primary"
             style={{
               width: "100%",
-              padding: "12px",
+              padding: "13px",
               fontSize: "0.95rem",
               fontWeight: "700",
               marginTop: "6px",
+              borderRadius: "10px",
+              background: "linear-gradient(135deg, #0F766E 0%, #115E59 100%)",
+              color: "#FFFFFF",
+              border: "none",
+              cursor: loading ? "not-allowed" : "pointer",
+              boxShadow: "0 4px 12px rgba(15, 118, 110, 0.25)",
+              transition: "transform 0.1s ease",
             }}
           >
             {loading ? "Authenticating..." : "Sign In →"}
           </button>
         </form>
 
-        {/* Quick Demo Logins Section */}
+        {/* Sign Up Link Section */}
         <div
           style={{
             marginTop: "24px",
             paddingTop: "20px",
             borderTop: "1px solid var(--border-subtle)",
+            textAlign: "center",
           }}
         >
-          <div
+          <p style={{ fontSize: "0.88rem", color: "var(--text-muted)", margin: "0 0 10px 0" }}>
+            Don't have an account yet?
+          </p>
+          <Link
+            href="/signup"
             style={{
-              fontSize: "0.76rem",
+              display: "inline-block",
+              width: "100%",
+              padding: "11px",
+              borderRadius: "10px",
+              border: "1.5px solid #0F766E",
+              background: "#F0FDF4",
+              color: "#0F766E",
+              textDecoration: "none",
+              fontSize: "0.92rem",
               fontWeight: "700",
-              color: "var(--text-dim)",
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-              marginBottom: "10px",
               textAlign: "center",
+              transition: "all 0.2s ease",
             }}
           >
-            Fast Demo Logins
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-            <button
-              type="button"
-              onClick={() => handleQuickFill("9999999999", "admin123")}
-              style={{
-                padding: "8px 10px",
-                borderRadius: "8px",
-                border: "1px solid var(--border-subtle)",
-                background: "#F8FAFC",
-                cursor: "pointer",
-                fontSize: "0.78rem",
-                fontWeight: "600",
-                color: "var(--color-primary)",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: "2px",
-                transition: "all 0.15s ease",
-              }}
-            >
-              <span>👑 Shop Admin</span>
-              <span style={{ fontSize: "0.68rem", color: "var(--text-dim)" }}>9999999999</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleQuickFill("8888888888", "admin123")}
-              style={{
-                padding: "8px 10px",
-                borderRadius: "8px",
-                border: "1px solid var(--border-subtle)",
-                background: "#F8FAFC",
-                cursor: "pointer",
-                fontSize: "0.78rem",
-                fontWeight: "600",
-                color: "var(--text-main)",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: "2px",
-                transition: "all 0.15s ease",
-              }}
-            >
-              <span>👨‍🍳 Counter Staff</span>
-              <span style={{ fontSize: "0.68rem", color: "var(--text-dim)" }}>8888888888</span>
-            </button>
-          </div>
+            Create an Account / Sign Up
+          </Link>
         </div>
 
         {/* Customer Menu Link */}
-        <div style={{ textAlign: "center", marginTop: "20px" }}>
+        <div style={{ textAlign: "center", marginTop: "18px" }}>
           <Link
             href="/menu"
             style={{

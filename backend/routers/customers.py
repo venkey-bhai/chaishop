@@ -177,6 +177,18 @@ def search_customers(
     return [_format_customer(c, db) for c in results]
 
 
+def _is_customer_owner(customer: Customer, current_user) -> bool:
+    if getattr(current_user, "role", None) != UserRole.CUSTOMER:
+        return True
+    return bool(
+        customer.customer_user_id == current_user.id or
+        customer.user_id == current_user.id or
+        (hasattr(current_user, "customer") and current_user.customer and current_user.customer.id == customer.id) or
+        (hasattr(current_user, "customer_profile") and current_user.customer_profile and current_user.customer_profile.id == customer.id) or
+        (customer.phone and customer.phone == getattr(current_user, "mobile_number", None))
+    )
+
+
 @router.get(
     "/me/profile",
     response_model=CustomerResponse,
@@ -185,11 +197,21 @@ def search_customers(
 )
 def get_my_customer_profile(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user = Depends(get_current_active_user),
 ):
-    customer = db.query(Customer).options(joinedload(Customer.credit_account)).filter(
-        Customer.user_id == current_user.id
-    ).first()
+    customer = None
+    if hasattr(current_user, "customer") and current_user.customer:
+        customer = current_user.customer
+    elif hasattr(current_user, "customer_profile") and current_user.customer_profile:
+        customer = current_user.customer_profile
+    else:
+        customer = db.query(Customer).options(joinedload(Customer.credit_account)).filter(
+            or_(
+                Customer.customer_user_id == current_user.id,
+                Customer.user_id == current_user.id,
+                Customer.phone == getattr(current_user, "mobile_number", None)
+            )
+        ).first()
 
     if not customer:
         raise HTTPException(
@@ -209,7 +231,7 @@ def get_my_customer_profile(
 def get_customer_by_id(
     customer_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user = Depends(get_current_active_user),
 ):
     customer = db.query(Customer).options(joinedload(Customer.credit_account)).filter(
         Customer.id == customer_id
@@ -222,12 +244,11 @@ def get_customer_by_id(
         )
 
     # Customer Ownership Guard (Section 40)
-    if current_user.role == UserRole.CUSTOMER:
-        if customer.user_id != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied. You can only view your own customer profile.",
-            )
+    if not _is_customer_owner(customer, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. You can only view your own customer profile.",
+        )
 
     return _format_customer(customer, db)
 
@@ -304,7 +325,7 @@ def update_customer(
     customer_id: int,
     payload: CustomerUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user = Depends(get_current_active_user),
 ):
     customer = db.query(Customer).options(joinedload(Customer.credit_account)).filter(
         Customer.id == customer_id
@@ -317,7 +338,7 @@ def update_customer(
         )
 
     # Ownership check
-    if current_user.role == UserRole.CUSTOMER and customer.user_id != current_user.id:
+    if not _is_customer_owner(customer, current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You are not authorized to update another customer's profile.",
@@ -463,6 +484,63 @@ def delete_customer(
 # =============================================================
 
 @router.get(
+    "/me/history",
+    response_model=CustomerHistoryResponse,
+    summary="Get Current Customer Purchase History",
+    description="Retrieves current logged-in customer's profile, financial summary, and order history."
+)
+def get_my_customer_history(
+    mode: str = Query("all", description="Period filter mode: 'all', 'daily', or 'monthly'"),
+    date: Optional[str] = Query(None, description="Target date for daily mode (YYYY-MM-DD)"),
+    month: Optional[int] = Query(None, ge=1, le=12, description="Target month (1-12) for monthly mode"),
+    year: Optional[int] = Query(None, description="Target year for monthly mode"),
+    search: Optional[str] = Query(None, description="Search by product name, bill number, or token"),
+    payment_method: Optional[str] = Query(None, description="Filter by payment method: CASH, UPI, CARD, CREDIT"),
+    payment_status: Optional[str] = Query(None, description="Filter by payment status: PAID, PENDING"),
+    credit_filter: Optional[str] = Query(None, description="Filter by credit transaction type"),
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(10, ge=1, le=100, description="Rows per page"),
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_active_user),
+):
+    cust = None
+    if hasattr(current_user, "customer") and current_user.customer:
+        cust = current_user.customer
+    elif hasattr(current_user, "customer_profile") and current_user.customer_profile:
+        cust = current_user.customer_profile
+    else:
+        cust = db.query(Customer).filter(
+            or_(
+                Customer.customer_user_id == current_user.id,
+                Customer.user_id == current_user.id,
+                Customer.phone == getattr(current_user, "mobile_number", None)
+            )
+        ).first()
+
+    if not cust:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No customer profile linked to this user account.",
+        )
+
+    return get_customer_history(
+        customer_id=cust.id,
+        mode=mode,
+        date=date,
+        month=month,
+        year=year,
+        search=search,
+        payment_method=payment_method,
+        payment_status=payment_status,
+        credit_filter=credit_filter,
+        page=page,
+        limit=limit,
+        db=db,
+        current_user=current_user,
+    )
+
+
+@router.get(
     "/{customer_id}/history",
     response_model=CustomerHistoryResponse,
     summary="Get Detailed Customer Purchase History & Credit Ledger",
@@ -481,7 +559,7 @@ def get_customer_history(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(10, ge=1, le=100, description="Rows per page"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user = Depends(get_current_active_user),
 ):
     customer = db.query(Customer).options(joinedload(Customer.credit_account)).filter(
         Customer.id == customer_id
@@ -494,11 +572,18 @@ def get_customer_history(
         )
 
     # Ownership guard: Customers can only view their own history
-    if current_user.role == UserRole.CUSTOMER and customer.user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. You can only view your own history.",
+    if getattr(current_user, "role", None) == UserRole.CUSTOMER:
+        is_owner = (
+            customer.customer_user_id == current_user.id or
+            customer.user_id == current_user.id or
+            (hasattr(current_user, "customer") and current_user.customer and current_user.customer.id == customer.id) or
+            (customer.phone and customer.phone == getattr(current_user, "mobile_number", None))
         )
+        if not is_owner:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied. You can only view your own history.",
+            )
 
     # Lifetime Customer Metrics
     lifetime_spent = db.query(func.coalesce(func.sum(Order.total_amount), Decimal("0.00"))).filter(

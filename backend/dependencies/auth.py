@@ -8,11 +8,15 @@ from sqlalchemy.orm import Session, joinedload
 try:
     from database.connection import get_db
     from models.user import User, UserRole
+    from models.admin_user import AdminUser
+    from models.customer_user import CustomerUser
     from models.customer import Customer
     from utils.security import decode_access_token
 except ImportError:
     from backend.database.connection import get_db
     from backend.models.user import User, UserRole
+    from backend.models.admin_user import AdminUser
+    from backend.models.customer_user import CustomerUser
     from backend.models.customer import Customer
     from backend.utils.security import decode_access_token
 
@@ -25,10 +29,11 @@ security_bearer = HTTPBearer(auto_error=False)
 def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_bearer),
     db: Session = Depends(get_db)
-) -> User:
+):
     """
     FastAPI dependency that extracts, decodes, and validates the JWT Bearer token
-    from the HTTP Authorization header. Returns the matching User record from PostgreSQL.
+    from the HTTP Authorization header. Returns the matching user record from PostgreSQL.
+    Supports AdminUser, CustomerUser, or legacy User models.
     """
     if credentials is None or not credentials.credentials:
         raise HTTPException(
@@ -71,8 +76,25 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Eagerly load customer profile if one exists for performance
-    user = db.query(User).options(joinedload(User.customer)).filter(User.id == user_id).first()
+    user_type = payload.get("user_type")
+    user = None
+
+    if user_type == "admin":
+        user = db.query(AdminUser).filter(AdminUser.id == user_id).first()
+        if not user:
+            user = db.query(User).filter(User.id == user_id).first()
+    elif user_type == "customer":
+        user = db.query(CustomerUser).options(joinedload(CustomerUser.customer_profile)).filter(CustomerUser.id == user_id).first()
+        if not user:
+            user = db.query(User).options(joinedload(User.customer)).filter(User.id == user_id).first()
+    else:
+        # Fallback / legacy token lookup
+        user = db.query(User).options(joinedload(User.customer)).filter(User.id == user_id).first()
+        if not user:
+            user = db.query(AdminUser).filter(AdminUser.id == user_id).first()
+        if not user:
+            user = db.query(CustomerUser).options(joinedload(CustomerUser.customer_profile)).filter(CustomerUser.id == user_id).first()
+
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

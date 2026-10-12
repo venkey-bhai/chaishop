@@ -85,6 +85,40 @@ export async function registerCustomer({ mobile_number, name, password, email })
 }
 
 /**
+ * Register a new customer user (public)
+ */
+export async function signupCustomer({ full_name, mobile_number, email, password, confirm_password }) {
+  return fetchFromApi("/api/auth/signup/customer", {
+    method: "POST",
+    body: JSON.stringify({
+      full_name,
+      mobile_number,
+      email: email || null,
+      password,
+      confirm_password: confirm_password || password,
+    }),
+  });
+}
+
+/**
+ * Register an admin user with secret authorization key
+ */
+export async function signupAdmin({ full_name, mobile_number, email, password, confirm_password, shop_name, admin_secret }) {
+  return fetchFromApi("/api/auth/signup/admin", {
+    method: "POST",
+    body: JSON.stringify({
+      full_name,
+      mobile_number,
+      email: email || null,
+      password,
+      confirm_password: confirm_password || password,
+      shop_name: shop_name || "ChaiFlow Tea Shop",
+      admin_secret,
+    }),
+  });
+}
+
+/**
  * Authenticate customer or admin with mobile number and password
  */
 export async function loginUser({ mobile_number, password }) {
@@ -190,6 +224,24 @@ export async function getCustomerById(id, token) {
     headers: {
       Authorization: `Bearer ${token}`,
     },
+  });
+}
+
+
+
+/**
+ * Fetch current customer's purchase history & credit summary
+ */
+export async function getMyCustomerHistory(params = {}, token) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== "") {
+      query.append(k, v);
+    }
+  });
+  const qs = query.toString() ? `?${query.toString()}` : "";
+  return fetchFromApi(`/api/customers/me/history${qs}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
 }
 

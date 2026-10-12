@@ -981,45 +981,41 @@ export default function Home() {
 
         {/* Action Button Toolbar */}
         <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "20px" }}>
-          <button
-            onClick={handleDemoRegister}
-            disabled={authLoading}
+          <Link
+            href="/login"
+            style={{
+              background: "linear-gradient(135deg, #0F766E, #115E59)",
+              color: "#fff",
+              textDecoration: "none",
+              padding: "9px 16px",
+              borderRadius: "8px",
+              fontWeight: "600",
+              fontSize: "0.85rem",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            <span>🔐</span> Go to Sign In Page
+          </Link>
+
+          <Link
+            href="/signup"
             style={{
               background: "linear-gradient(135deg, #10b981, #059669)",
               color: "#fff",
-              border: "none",
+              textDecoration: "none",
               padding: "9px 16px",
               borderRadius: "8px",
-              cursor: "pointer",
               fontWeight: "600",
               fontSize: "0.85rem",
               display: "flex",
               alignItems: "center",
-              gap: "6px"
+              gap: "6px",
             }}
           >
-            <span>📱</span> Register Demo Customer
-          </button>
-
-          <button
-            onClick={handleAdminLogin}
-            disabled={authLoading}
-            style={{
-              background: "linear-gradient(135deg, #f59e0b, #d97706)",
-              color: "#fff",
-              border: "none",
-              padding: "9px 16px",
-              borderRadius: "8px",
-              cursor: "pointer",
-              fontWeight: "600",
-              fontSize: "0.85rem",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px"
-            }}
-          >
-            <span>👑</span> Login as Shop Admin (9999999999)
-          </button>
+            <span>📝</span> Create Account / Sign Up
+          </Link>
 
           <button
             onClick={handleFetchProfile}

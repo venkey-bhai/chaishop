@@ -50,23 +50,18 @@ export function AuthProvider({ children }) {
     localStorage.removeItem("chaiflow_user");
   }, []);
 
+  const setSession = useCallback((accessToken, user) => {
+    if (accessToken && user) {
+      setToken(accessToken);
+      setCurrentUser(user);
+      localStorage.setItem("chaiflow_token", accessToken);
+      localStorage.setItem("chaiflow_user", JSON.stringify(user));
+    }
+  }, []);
+
   const getValidAdminToken = useCallback(async () => {
     if (token && currentUser?.role === "ADMIN") {
       return token;
-    }
-    // Auto-login as default admin if not logged in
-    try {
-      const res = await loginUser({ mobile_number: "9999999999", password: "admin123" });
-      if (res?.access_token) {
-        setToken(res.access_token);
-        setCurrentUser(res.user);
-        localStorage.setItem("chaiflow_token", res.access_token);
-        localStorage.setItem("chaiflow_user", JSON.stringify(res.user));
-        return res.access_token;
-      }
-    } catch (err) {
-      console.error("Failed to obtain admin token:", err);
-      throw err;
     }
     return token;
   }, [token, currentUser]);
@@ -80,6 +75,7 @@ export function AuthProvider({ children }) {
         isAdmin: currentUser?.role === "ADMIN",
         login,
         logout,
+        setSession,
         getValidAdminToken,
       }}
     >

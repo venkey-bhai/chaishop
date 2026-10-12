@@ -77,6 +77,7 @@ class TestPhase8PaymentsAndBilling(unittest.TestCase):
         # 1. Place order for 2x Chai = 50.00
         order_res = self.client.post("/api/orders", json={
             "customer_name": "Cash Customer",
+            "customer_phone": "9876543210",
             "table_number": "4",
             "payment_method": "CASH",
             "items": [{"menu_item_id": self.item_id, "quantity": 2}]
@@ -111,6 +112,7 @@ class TestPhase8PaymentsAndBilling(unittest.TestCase):
         """Tendering less than bill amount is rejected with 400 Bad Request."""
         order_res = self.client.post("/api/orders", json={
             "customer_name": "Short Cash Customer",
+            "customer_phone": "9876543210",
             "items": [{"menu_item_id": self.item_id, "quantity": 2}]  # 50.00
         })
         order_id = order_res.json()["id"]
@@ -127,6 +129,7 @@ class TestPhase8PaymentsAndBilling(unittest.TestCase):
         """Attempting to settle an order that is already PAID returns 400 Bad Request."""
         order_res = self.client.post("/api/orders", json={
             "customer_name": "Repeat Payment Order",
+            "customer_phone": "9876543210",
             "items": [{"menu_item_id": self.item_id, "quantity": 1}]
         })
         order_id = order_res.json()["id"]
@@ -149,6 +152,7 @@ class TestPhase8PaymentsAndBilling(unittest.TestCase):
         """Settling via UPI records UTR reference code and marks payment COMPLETED."""
         order_res = self.client.post("/api/orders", json={
             "customer_name": "UPI Customer",
+            "customer_phone": "9876543210",
             "table_number": "6",
             "payment_method": "UPI",
             "items": [{"menu_item_id": self.item_id, "quantity": 3}]  # 75.00
@@ -172,6 +176,7 @@ class TestPhase8PaymentsAndBilling(unittest.TestCase):
         """Dynamic UPI endpoint returns standard NPCI URI formatted with exact amount."""
         order_res = self.client.post("/api/orders", json={
             "customer_name": "QR Scan Customer",
+            "customer_phone": "9876543210",
             "items": [{"menu_item_id": self.item_id, "quantity": 2}]  # 50.00
         })
         order_id = order_res.json()["id"]
@@ -190,6 +195,7 @@ class TestPhase8PaymentsAndBilling(unittest.TestCase):
         """Receipt endpoint returns formatted printable thermal bill data."""
         order_res = self.client.post("/api/orders", json={
             "customer_name": "Receipt Customer",
+            "customer_phone": "9876543210",
             "table_number": "2",
             "items": [
                 {
@@ -217,6 +223,7 @@ class TestPhase8PaymentsAndBilling(unittest.TestCase):
         """Customer visits counter and repays debt; reduces balance and creates PAYMENT transaction."""
         # 1. Place order on credit to build debt
         order_res = self.client.post("/api/orders", json={
+            "customer_name": "Credit Customer",
             "customer_phone": self.cust_phone,
             "payment_method": "CREDIT",
             "items": [{"menu_item_id": self.item_id, "quantity": 4}]  # 100.00

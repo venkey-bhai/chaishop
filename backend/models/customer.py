@@ -35,6 +35,8 @@ class Customer(Base):
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="customer")
+    customer_user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("customer_users.id", ondelete="SET NULL"), unique=True, nullable=True)
+    customer_user: Mapped["CustomerUser"] = relationship("CustomerUser", back_populates="customer_profile", uselist=False)
     orders: Mapped[list["Order"]] = relationship("Order", back_populates="customer")
     credit_account: Mapped["CreditAccount"] = relationship("CreditAccount", back_populates="customer", uselist=False, cascade="all, delete-orphan")
     credit_transactions: Mapped[list["CreditTransaction"]] = relationship("CreditTransaction", back_populates="customer")

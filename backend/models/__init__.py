@@ -1,6 +1,8 @@
 try:
     from database.base import Base
     from models.user import User, UserRole
+    from models.admin_user import AdminUser
+    from models.customer_user import CustomerUser
     from models.customer import Customer
     from models.menu import MenuCategory, MenuItem
     from models.order import Order, OrderItem, PaymentMethod, PaymentStatus, OrderStatus
@@ -10,6 +12,8 @@ try:
 except ImportError:
     from backend.database.base import Base
     from backend.models.user import User, UserRole
+    from backend.models.admin_user import AdminUser
+    from backend.models.customer_user import CustomerUser
     from backend.models.customer import Customer
     from backend.models.menu import MenuCategory, MenuItem
     from backend.models.order import Order, OrderItem, PaymentMethod, PaymentStatus, OrderStatus
@@ -21,6 +25,8 @@ except ImportError:
 __all__ = [
     "Base",
     "User",
+    "AdminUser",
+    "CustomerUser",
     "UserRole",
     "Customer",
     "MenuCategory",
