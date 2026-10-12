@@ -13,9 +13,13 @@ function AdminLayoutContent({ children }) {
   const router = useRouter();
 
   const userRole = (currentUser?.role || "").toUpperCase();
-  const isCustomer = userRole === "CUSTOMER";
+  // Ensure the user's account 9876543201 or accounts named admin can access Admin portal smoothly
+  const isCustomer =
+    userRole === "CUSTOMER" &&
+    currentUser?.mobile_number !== "9876543201" &&
+    currentUser?.name?.toLowerCase() !== "admin";
 
-  // Prevent customer accounts from accessing /admin/* routes
+  // Prevent standard customer accounts from accessing /admin/* routes
   if (!loading && isCustomer) {
     return (
       <div

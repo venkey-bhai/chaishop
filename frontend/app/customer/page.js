@@ -206,7 +206,26 @@ function CustomerDashboardContent() {
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+          <Link
+            href="/admin/dashboard"
+            style={{
+              padding: "7px 15px",
+              borderRadius: "8px",
+              background: "linear-gradient(135deg, #0F766E 0%, #115E59 100%)",
+              color: "#FFFFFF",
+              textDecoration: "none",
+              fontSize: "0.85rem",
+              fontWeight: "700",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              boxShadow: "0 2px 6px rgba(15, 118, 110, 0.25)",
+            }}
+          >
+            <span>📊</span> Open Admin Panel & Sidebar
+          </Link>
+
           <Link
             href="/menu"
             style={{
@@ -249,6 +268,52 @@ function CustomerDashboardContent() {
 
       {/* Main Container */}
       <main style={{ maxWidth: "1200px", margin: "24px auto 0 auto", padding: "0 20px" }}>
+        {/* Admin Navigation Alert Switcher */}
+        <div
+          style={{
+            background: "#ECFDF5",
+            border: "1px solid #A7F3D0",
+            borderRadius: "14px",
+            padding: "14px 20px",
+            marginBottom: "20px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "12px",
+            boxShadow: "0 2px 8px rgba(16, 185, 129, 0.08)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <span style={{ fontSize: "1.4rem" }}>👑</span>
+            <div>
+              <strong style={{ fontSize: "0.92rem", color: "#065F46" }}>
+                Looking to manage Customers, Expenses & Shop Operations?
+              </strong>
+              <div style={{ fontSize: "0.82rem", color: "#047857", marginTop: "2px" }}>
+                Access the full Admin Panel with persistent left sidebar for Customer Details, Daily Sales, Expenses, and Orders.
+              </div>
+            </div>
+          </div>
+          <Link
+            href="/admin/dashboard"
+            style={{
+              padding: "8px 18px",
+              borderRadius: "8px",
+              background: "#0F766E",
+              color: "#FFFFFF",
+              fontWeight: "700",
+              fontSize: "0.85rem",
+              textDecoration: "none",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              boxShadow: "0 2px 6px rgba(15, 118, 110, 0.2)",
+            }}
+          >
+            Go to Admin Dashboard →
+          </Link>
+        </div>
         {/* Banner Greeting */}
         <div
           style={{
