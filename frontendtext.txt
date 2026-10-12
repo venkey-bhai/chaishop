@@ -1,0 +1,276 @@
+# Chai Flow Application — Multi-Page UI Redesign & Admin Panel
+
+I have an existing application called **Chai Flow**. Currently, most of the application features and content are displayed on a single page.
+
+I want to redesign the existing application into a **modern, responsive, multi-page application with a dedicated admin panel, a left-side navigation menu, and a light-colored user interface**.
+
+## 1. Main Requirements
+
+* Convert the current single-page layout into a properly organized multi-page application.
+* Create separate pages for each major feature.
+* Add a dedicated admin panel.
+* Implement a persistent left-side navigation menu for the admin panel.
+* Change the overall background from dark or heavy colors to a clean, light theme.
+* Make the application responsive for desktop, tablet, and mobile devices.
+* Maintain all existing functionality, database connections, APIs, and business logic.
+* Improve the user interface without unnecessarily rewriting the existing backend.
+
+## 2. Multi-Page Application Structure
+
+Organize the application into separate pages based on its existing features.
+
+Suggested pages:
+
+1. **Dashboard** — Overview of important statistics, recent activities, sales, orders, and financial summaries.
+2. **Customers** — Customer list, search, customer details, and customer management.
+3. **Menu Management** — Manage chai varieties, snacks, categories, prices, and item availability.
+4. **Orders** — View orders, order details, and order statuses.
+5. **Payments** — View payment records and payment statuses.
+6. **Credit Management** — Manage customer credit limits, outstanding balances, payments, and credit history.
+7. **Expenses** — Record and manage shop expenses.
+8. **Reports & Analytics** — Display daily, weekly, monthly, and yearly reports with charts.
+9. **Settings** — Manage application settings and administrator profile.
+
+Create only the pages that match the existing application's functionality. Do not create duplicate or unnecessary features.
+
+## 3. Admin Panel Layout
+
+Create a professional admin dashboard layout with three main sections:
+
+### Left Sidebar
+
+Add a fixed or collapsible left-side navigation menu containing:
+
+* Chai Flow logo and application name
+* Dashboard
+* Customers
+* Menu Management
+* Orders
+* Payments
+* Credit Management
+* Expenses
+* Reports & Analytics
+* Settings
+* Logout
+
+Use appropriate icons for each menu item.
+
+The sidebar should remain consistent when navigating between admin pages. Highlight the currently selected page with a clear active state.
+
+Allow the sidebar to collapse on desktop and become a slide-out navigation menu on mobile devices.
+
+### Top Navigation Bar
+
+Include:
+
+* Page title or breadcrumb
+* Search field where appropriate
+* Notifications icon if notifications are supported
+* Administrator profile menu
+* Logout option
+
+### Main Content Area
+
+Display the selected page's content in the main area to the right of the sidebar.
+
+Use consistent spacing, readable typography, clean cards, and properly aligned tables and forms.
+
+## 4. Light Theme and Background Colors
+
+Change the application's overall visual design to a clean, modern light theme.
+
+Use this suggested color palette:
+
+* Main background: `#F8FAFC`
+* Sidebar background: `#FFFFFF`
+* Card background: `#FFFFFF`
+* Primary color: `#0F766E`
+* Primary hover color: `#115E59`
+* Main text: `#1E293B`
+* Secondary text: `#64748B`
+* Borders: `#E2E8F0`
+* Success: `#16A34A`
+* Warning: `#D97706`
+* Error: `#DC2626`
+
+Apply these colors consistently across the application.
+
+Avoid large dark backgrounds, excessive gradients, overly saturated colors, and unnecessary shadows.
+
+Use subtle borders, gentle shadows, rounded corners, and sufficient whitespace.
+
+Keep text readable and ensure good contrast between text and backgrounds.
+
+## 5. Dashboard Design
+
+Create a clean dashboard with summary cards appropriate to the application's existing data.
+
+For example:
+
+* Total Customers
+* Today's Orders
+* Today's Sales
+* Outstanding Credit
+* Today's Expenses
+
+Below the summary cards, include relevant charts and tables, such as:
+
+* Sales overview chart
+* Order trends
+* Best-selling menu items
+* Recent orders
+* Customers with outstanding credit
+
+Connect these components to the existing backend APIs where available. Do not display fabricated statistics or hardcoded business data as if they were real.
+
+## 6. Separate Customer Interface and Admin Interface
+
+Keep the customer-facing ordering experience separate from the admin panel.
+
+Customer pages should focus on:
+
+* Viewing the menu
+* Searching products
+* Adding items to the cart
+* Placing orders
+* Viewing order history
+* Viewing credit information when authorized
+
+Admin pages should focus on:
+
+* Managing customers
+* Managing menu items
+* Managing orders
+* Managing payments
+* Managing credit
+* Managing expenses
+* Viewing reports and analytics
+
+Do not show the admin sidebar on customer-facing menu and ordering pages unless there is an existing design requirement for it.
+
+## 7. Routing and Navigation
+
+Use the routing system supported by the existing frontend framework.
+
+If the application uses Next.js App Router, organize pages using the `app/` directory and appropriate layouts.
+
+Suggested structure:
+
+```text
+frontend/
+└── app/
+    ├── layout.jsx
+    ├── page.jsx
+    ├── menu/
+    │   └── page.jsx
+    ├── cart/
+    │   └── page.jsx
+    ├── orders/
+    │   └── page.jsx
+    └── admin/
+        ├── layout.jsx
+        ├── dashboard/
+        │   └── page.jsx
+        ├── customers/
+        │   └── page.jsx
+        ├── menu/
+        │   └── page.jsx
+        ├── orders/
+        │   └── page.jsx
+        ├── payments/
+        │   └── page.jsx
+        ├── credit/
+        │   └── page.jsx
+        ├── expenses/
+        │   └── page.jsx
+        ├── reports/
+        │   └── page.jsx
+        └── settings/
+            └── page.jsx
+```
+
+Adapt this structure to the existing repository rather than blindly replacing existing files.
+
+Use shared layouts and reusable components to avoid duplicating the sidebar, navigation bar, cards, tables, and form styles.
+
+## 8. Responsive Design
+
+Ensure the application works properly on:
+
+* Desktop computers
+* Laptops
+* Tablets
+* Mobile phones
+
+On desktop, show the sidebar alongside the main content.
+
+On mobile, collapse the sidebar into a menu button and make tables, forms, cards, and navigation usable on small screens.
+
+The customer menu and cart must be especially mobile-friendly because customers will access them by scanning a QR code.
+
+## 9. Authentication and Authorization
+
+Preserve the existing authentication system.
+
+* Only authorized administrators should access admin pages.
+* Customers must not be able to access admin functionality.
+* Protect backend admin APIs with server-side authorization.
+* Do not rely only on hiding admin links in the frontend.
+* Redirect unauthorized users appropriately.
+* Preserve existing user roles and permissions.
+
+Do not introduce a new authentication system unless the current one is missing or genuinely needs modification.
+
+## 10. Code Quality
+
+* Reuse existing API services and database models.
+* Keep business logic separate from presentation components.
+* Create reusable sidebar, header, card, table, and form components.
+* Avoid duplicating code across pages.
+* Keep existing API endpoint URLs compatible.
+* Preserve existing functionality and data.
+* Use the existing styling framework if one is already installed.
+* Avoid installing unnecessary dependencies.
+* Do not replace working backend code just to change the UI.
+
+## 11. Implementation Instructions
+
+Before modifying the application:
+
+1. Inspect the existing project structure.
+2. Identify the frontend framework and routing system.
+3. Identify the current single-page components and their functionality.
+4. Identify existing API integrations and authentication.
+5. Plan how to divide the current interface into separate pages.
+6. Identify which existing files can be reused.
+
+Then implement the redesign in manageable steps:
+
+1. Create the shared application layouts.
+2. Implement the light theme and global styles.
+3. Create the admin sidebar and top navigation bar.
+4. Implement the separate page routes.
+5. Move existing features into their appropriate pages.
+6. Connect each page to the existing APIs.
+7. Add responsive layouts.
+8. Implement and verify admin access protection.
+9. Test navigation and all existing features.
+10. Fix any errors introduced by the changes.
+
+## 12. Final Acceptance Criteria
+
+The redesign is complete when:
+
+* The application is no longer presented as one large page.
+* Major features have their own routes and pages.
+* The admin panel has a consistent left sidebar.
+* The active sidebar item is highlighted correctly.
+* The overall design uses the requested light color palette.
+* Customer-facing pages remain separate from admin pages.
+* Navigation works without broken links.
+* Existing APIs, authentication, and business functionality continue working.
+* Admin access is properly protected.
+* The interface works on desktop and mobile.
+* No existing database records or working features are lost.
+
+**Important:** First inspect my existing Chai Flow project, then modify it incrementally. Do not create an entirely new application, delete existing functionality, or replace the backend unnecessarily. Explain which files you intend to modify and why before making major structural changes.

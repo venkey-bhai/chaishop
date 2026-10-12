@@ -1,0 +1,290 @@
+:root {
+  /* Chai Flow Light Theme Palette (frontendtext.txt Section 4) */
+  --bg-main: #F8FAFC;
+  --bg-primary: #F8FAFC;
+  --bg-sidebar: #FFFFFF;
+  --bg-card: #FFFFFF;
+  --bg-card-subtle: #F1F5F9;
+  --bg-input: #FFFFFF;
+  --bg-modal: #FFFFFF;
+
+  /* Primary Brand: Deep Teal & Forest Accent */
+  --color-primary: #0F766E;
+  --color-primary-hover: #115E59;
+  --color-primary-light: rgba(15, 118, 110, 0.08);
+
+  /* Typography */
+  --text-main: #1E293B;
+  --text-muted: #64748B;
+  --text-dim: #94A3B8;
+
+  /* Borders & Dividers */
+  --border-subtle: #E2E8F0;
+  --border-light: #F1F5F9;
+  --border-accent: rgba(15, 118, 110, 0.35);
+
+  /* Status Colors */
+  --status-success: #16A34A;
+  --status-warning: #D97706;
+  --status-err: #DC2626;
+
+  /* Chai Accents */
+  --chai-gold: #D97706;
+  --chai-warm: #B45309;
+  --tea-green: #16A34A;
+
+  --font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  /* Subtle Clean Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
+  --shadow-card-hover: 0 4px 8px -2px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
+  --shadow-dropdown: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.03);
+  --shadow-modal: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  font-family: var(--font-family);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Base Card Panels */
+.glass-panel,
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  box-shadow: var(--shadow-card);
+  transition: all 0.2s ease;
+}
+
+.glass-panel:hover,
+.card:hover {
+  box-shadow: var(--shadow-card-hover);
+  border-color: #CBD5E1;
+}
+
+/* Animated status pulse */
+.pulse-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+  position: relative;
+}
+
+.pulse-dot.online {
+  background-color: var(--status-success);
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.2);
+}
+
+.pulse-dot.online::after {
+  content: "";
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  border-radius: 50%;
+  border: 2px solid var(--status-success);
+  animation: pulse-ring 2s infinite ease-out;
+}
+
+.pulse-dot.offline {
+  background-color: var(--status-err);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.2);
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+/* Primary Button Styling */
+.btn-primary {
+  background-color: var(--color-primary);
+  color: #FFFFFF;
+  font-weight: 600;
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  transition: all 0.15s ease;
+  box-shadow: var(--shadow-sm);
+}
+
+.btn-primary:hover {
+  background-color: var(--color-primary-hover);
+  transform: translateY(-1px);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Secondary Button Styling */
+.btn-secondary {
+  background-color: #FFFFFF;
+  color: var(--text-main);
+  border: 1px solid var(--border-subtle);
+  font-weight: 500;
+  padding: 9px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  transition: all 0.15s ease;
+}
+
+.btn-secondary:hover {
+  background-color: #F8FAFC;
+  border-color: #CBD5E1;
+}
+
+/* Form Controls */
+input, select, textarea {
+  font-family: inherit;
+  font-size: 0.9rem;
+  color: var(--text-main);
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 9px 12px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.15);
+}
+
+select option {
+  background-color: #FFFFFF;
+  color: var(--text-main);
+}
+
+/* Table Design */
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th {
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-subtle);
+  background-color: var(--bg-card-subtle);
+}
+
+td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-main);
+  font-size: 0.88rem;
+}
+
+tr:hover td {
+  background-color: rgba(241, 245, 249, 0.5);
+}
+
+/* JSON / Code Viewer block */
+pre.code-block {
+  background: #0F172A;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 14px;
+  color: #38BDF8;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 0.85rem;
+  overflow-x: auto;
+}
+
+/* Admin Layout & Sidebar Responsiveness */
+.nav-link:hover {
+  background-color: var(--bg-card-subtle);
+  color: var(--color-primary);
+}
+
+.nav-logout-btn:hover {
+  background-color: rgba(220, 38, 38, 0.08);
+}
+
+.mobile-menu-btn {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobile-menu-btn {
+    display: inline-flex !important;
+  }
+
+  .desktop-collapse-btn {
+    display: none !important;
+  }
+
+  .admin-sidebar {
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    height: 100vh !important;
+    z-index: 50 !important;
+    transform: translateX(-100%);
+    box-shadow: var(--shadow-dropdown);
+  }
+
+  .admin-sidebar.mobile-open {
+    transform: translateX(0) !important;
+  }
+
+  .header-health-badge {
+    display: none !important;
+  }
+
+  .refresh-label {
+    display: none !important;
+  }
+
+  .admin-profile-text {
+    display: none !important;
+  }
+}
