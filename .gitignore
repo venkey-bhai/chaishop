@@ -42,3 +42,14 @@ Thumbs.db
 
 # Temporary scratch
 *.log
+
+# Text and Specification notes
+billingapptext.txt
+customerorderdetails.txt
+customeroredredetalis.txt
+dailysales.txt
+frontendtext.txt
+frontedntext.txt
+menuaddgesment.txt
+/*.txt
+!*requirements*.txt
