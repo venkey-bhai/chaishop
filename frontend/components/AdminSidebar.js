@@ -17,7 +17,7 @@ const NAV_ITEMS = [
   { label: "Settings", href: "/admin/settings", icon: "⚙️" },
 ];
 
-export default function AdminSidebar({
+function AdminSidebarContent({
   collapsed = false,
   onToggleCollapse,
   mobileOpen = false,
@@ -343,3 +343,30 @@ export default function AdminSidebar({
     </>
   );
 }
+
+export default function AdminSidebar(props) {
+  return (
+    <React.Suspense
+      fallback={
+        <aside
+          style={{
+            width: props?.collapsed ? "74px" : "250px",
+            minWidth: props?.collapsed ? "74px" : "250px",
+            background: "#FFFFFF",
+            borderRight: "1px solid var(--border-subtle)",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+            height: "100vh",
+            position: "sticky",
+            top: 0,
+            zIndex: 30,
+          }}
+        />
+      }
+    >
+      <AdminSidebarContent {...props} />
+    </React.Suspense>
+  );
+}
+

@@ -17,7 +17,7 @@ const ROUTE_TITLES = {
   "/admin/settings": { title: "System Settings", subtitle: "Admin Profile, Database Diagnostics & Environment" },
 };
 
-export default function AdminHeader({
+function AdminHeaderContent({
   onOpenMobile,
   onRefresh,
   refreshing = false,
@@ -150,8 +150,8 @@ export default function AdminHeader({
             {healthStatus === "healthy"
               ? "Backend Online"
               : healthStatus === "checking"
-              ? "Connecting..."
-              : "Backend Offline"}
+                ? "Connecting..."
+                : "Backend Offline"}
           </span>
         </div>
 
@@ -285,3 +285,26 @@ export default function AdminHeader({
     </header>
   );
 }
+
+export default function AdminHeader(props) {
+  return (
+    <React.Suspense
+      fallback={
+        <header
+          style={{
+            background: "#FFFFFF",
+            borderBottom: "1px solid var(--border-subtle)",
+            padding: "16px 24px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            minHeight: "70px",
+          }}
+        />
+      }
+    >
+      <AdminHeaderContent {...props} />
+    </React.Suspense>
+  );
+}
+

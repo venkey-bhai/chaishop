@@ -9,7 +9,7 @@ import {
   getBillReceipt,
 } from "../../../../services/api";
 
-export default function CustomerProfilePage() {
+function CustomerProfileContent() {
   const params = useParams();
   const router = useRouter();
   const customerId = params?.id;
@@ -183,8 +183,7 @@ export default function CustomerProfilePage() {
         token
       );
       setActionMsg(
-        `Rule 61 Applied: Credit for ${c.name} is now ${
-          newStatus ? `ENABLED (Limit: ₹${newLimit})` : "REVOKED"
+        `Rule 61 Applied: Credit for ${c.name} is now ${newStatus ? `ENABLED (Limit: ₹${newLimit})` : "REVOKED"
         }`
       );
       await fetchCustomerHistory(page, limit);
@@ -940,8 +939,8 @@ export default function CustomerProfilePage() {
                       {filterMode === "daily"
                         ? `No transactions recorded for ${customer?.name} on ${selectedDate}.`
                         : filterMode === "monthly"
-                        ? `No transactions recorded for ${customer?.name} in ${monthNames[selectedMonth - 1]} ${selectedYear}.`
-                        : `No transactions found matching current filters for ${customer?.name}.`}
+                          ? `No transactions recorded for ${customer?.name} in ${monthNames[selectedMonth - 1]} ${selectedYear}.`
+                          : `No transactions found matching current filters for ${customer?.name}.`}
                     </td>
                   </tr>
                 ) : (
@@ -1073,18 +1072,18 @@ export default function CustomerProfilePage() {
                               tx.payment_method === "CREDIT"
                                 ? "#fee2e2"
                                 : tx.payment_method === "UPI"
-                                ? "#e0e7ff"
-                                : tx.payment_method === "CASH"
-                                ? "#f0fdf4"
-                                : "#f1f5f9",
+                                  ? "#e0e7ff"
+                                  : tx.payment_method === "CASH"
+                                    ? "#f0fdf4"
+                                    : "#f1f5f9",
                             color:
                               tx.payment_method === "CREDIT"
                                 ? "#991b1b"
                                 : tx.payment_method === "UPI"
-                                ? "#3730a3"
-                                : tx.payment_method === "CASH"
-                                ? "#166534"
-                                : "#334155",
+                                  ? "#3730a3"
+                                  : tx.payment_method === "CASH"
+                                    ? "#166534"
+                                    : "#334155",
                           }}
                         >
                           {tx.payment_method}
@@ -1410,3 +1409,24 @@ export default function CustomerProfilePage() {
     </div>
   );
 }
+
+export default function CustomerProfilePage() {
+  return (
+    <React.Suspense
+      fallback={
+        <div
+          style={{
+            padding: "40px",
+            textAlign: "center",
+            color: "var(--text-muted)",
+          }}
+        >
+          Loading customer profile & transaction history...
+        </div>
+      }
+    >
+      <CustomerProfileContent />
+    </React.Suspense>
+  );
+}
+
