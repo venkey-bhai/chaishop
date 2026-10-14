@@ -68,32 +68,48 @@ function CustomerMenuContent() {
 
     function handleVisibility() {
       if (document.visibilityState === "visible") {
-        loadCatalogData();
+        loadCatalogData(true);
       }
     }
     window.addEventListener("focus", handleVisibility);
     document.addEventListener("visibilitychange", handleVisibility);
+
+    const interval = setInterval(() => {
+      loadCatalogData(true);
+    }, 12000);
+
     return () => {
+      clearInterval(interval);
       window.removeEventListener("focus", handleVisibility);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [urlTable, urlCounter]);
 
-  async function loadCatalogData() {
-    setLoading(true);
-    setError(null);
+  async function loadCatalogData(isBackground = false) {
+    if (!isBackground) setLoading(true);
+    if (!isBackground) setError(null);
     try {
       const data = await getMenuCatalog();
       setCatalog(Array.isArray(data) ? data : []);
     } catch (err) {
-      setError(err.message || "Failed to load digital menu");
+      if (!isBackground) setError(err.message || "Failed to load digital menu");
     } finally {
-      setLoading(false);
+      if (!isBackground) setLoading(false);
     }
   }
 
   function handleOpenCustomization(item) {
-    if (!item.is_available) return;
+    const inCartQty = cartItems
+      .filter((c) => c.item_id === item.id)
+      .reduce((acc, c) => acc + c.quantity, 0);
+    const baseStock = item.track_stock ? Number(item.available_quantity || 0) : null;
+    const remainingStock = item.track_stock ? Math.max(0, baseStock - inCartQty) : 999;
+
+    if (!item.is_available || (item.track_stock && remainingStock <= 0)) {
+      setCartToast(`All available stock for ${item.name} is already in your cart!`);
+      setTimeout(() => setCartToast(""), 2500);
+      return;
+    }
     setSelectedItem(item);
     setItemQuantity(1);
 
@@ -114,6 +130,25 @@ function CustomerMenuContent() {
   }
 
   function handleAddToCart(item, options = null, qty = 1) {
+    const inCartQty = cartItems
+      .filter((c) => c.item_id === item.id)
+      .reduce((acc, c) => acc + c.quantity, 0);
+
+    const baseStock = item.track_stock ? Number(item.available_quantity || 0) : null;
+    const remainingStock = item.track_stock ? Math.max(0, baseStock - inCartQty) : 999;
+
+    if (!item.is_available || (item.track_stock && baseStock <= 0)) {
+      setCartToast(`Cannot add ${item.name} - Out of stock!`);
+      setTimeout(() => setCartToast(""), 2500);
+      return;
+    }
+
+    if (item.track_stock && remainingStock < qty) {
+      setCartToast(`Only ${remainingStock} more available in stock for ${item.name}`);
+      setTimeout(() => setCartToast(""), 2500);
+      return;
+    }
+
     const customizedOptions = options || (item.has_customizations ? {
       sugar: customSugar,
       strength: customStrength
@@ -147,8 +182,13 @@ function CustomerMenuContent() {
       localStorage.setItem("teashop_cart", JSON.stringify(updatedCart));
     } catch (e) {}
 
-    // Show instant feedback toast
-    setCartToast(`Added ${qty}x ${item.name} to order`);
+    // Show instant feedback toast with remaining stock
+    const newRemaining = item.track_stock ? remainingStock - qty : null;
+    setCartToast(
+      newRemaining !== null
+        ? `Added ${qty}x ${item.name} (${newRemaining} remaining)`
+        : `Added ${qty}x ${item.name} to order`
+    );
     setTimeout(() => setCartToast(""), 2500);
 
     handleCloseCustomization();
@@ -156,6 +196,39 @@ function CustomerMenuContent() {
 
   function handleRemoveFromCart(index) {
     const updated = cartItems.filter((_, i) => i !== index);
+    setCartItems(updated);
+    try {
+      localStorage.setItem("teashop_cart", JSON.stringify(updated));
+    } catch (e) {}
+  }
+
+  function handleUpdateCartQty(index, delta) {
+    const updated = [...cartItems];
+    const target = updated[index];
+    if (!target) return;
+
+    const newQty = target.quantity + delta;
+    if (newQty <= 0) {
+      handleRemoveFromCart(index);
+      return;
+    }
+
+    // Check catalog stock constraint when incrementing
+    if (delta > 0) {
+      const catalogItem = catalog.flatMap((c) => c.items || []).find((i) => i.id === target.item_id);
+      if (catalogItem && catalogItem.track_stock) {
+        const otherInCart = updated
+          .filter((c, i) => i !== index && c.item_id === target.item_id)
+          .reduce((sum, c) => sum + c.quantity, 0);
+        if (newQty + otherInCart > Number(catalogItem.available_quantity)) {
+          setCartToast(`Cannot add more - only ${catalogItem.available_quantity} available in stock!`);
+          setTimeout(() => setCartToast(""), 2500);
+          return;
+        }
+      }
+    }
+
+    target.quantity = newQty;
     setCartItems(updated);
     try {
       localStorage.setItem("teashop_cart", JSON.stringify(updated));
@@ -233,6 +306,8 @@ function CustomerMenuContent() {
       setShowCheckout(false);
       setCartItems([]);
       try { localStorage.removeItem("teashop_cart"); } catch (e) {}
+      // Refresh inventory stock immediately from database
+      await loadCatalogData();
     } catch (err) {
       setOrderError(err.message || "Failed to place order. Please check inputs.");
     } finally {
@@ -494,107 +569,212 @@ function CustomerMenuContent() {
 
               {/* Items List */}
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                {category.items.map((item) => (
-                  <div
-                    key={item.id}
-                    style={{
-                      background: "rgba(255, 255, 255, 0.025)",
-                      border: "1px solid rgba(255, 255, 255, 0.07)",
-                      borderRadius: "14px",
-                      padding: "14px",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: "12px",
-                      opacity: item.is_available ? 1 : 0.55,
-                      transition: "transform 0.15s ease",
-                    }}
-                  >
-                    <div style={{ flex: "1" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                        <h3 style={{ fontSize: "0.98rem", fontWeight: "600", color: "#fff" }}>
-                          {item.name}
-                        </h3>
-                        {item.has_customizations && (
-                          <span style={{
-                            fontSize: "0.68rem",
-                            background: "rgba(245, 158, 11, 0.15)",
-                            color: "#f59e0b",
-                            padding: "2px 6px",
-                            borderRadius: "4px",
-                            fontWeight: "600"
-                          }}>
-                            Customizable
-                          </span>
+                {category.items.map((item) => {
+                  const inCartQty = cartItems
+                    .filter((c) => c.item_id === item.id)
+                    .reduce((acc, c) => acc + c.quantity, 0);
+
+                  const baseStock = item.track_stock ? Number(item.available_quantity || 0) : null;
+                  const effectiveStock = item.track_stock ? Math.max(0, baseStock - inCartQty) : null;
+
+                  const isShopOutOfStock = !item.is_available || (item.track_stock && baseStock <= 0);
+                  const isAllInCart = item.track_stock && !isShopOutOfStock && effectiveStock <= 0;
+                  const isLowStock = item.track_stock && !isShopOutOfStock && !isAllInCart && effectiveStock <= (item.low_stock_threshold ?? 5);
+
+                  const isButtonDisabled = isShopOutOfStock || isAllInCart;
+
+                  return (
+                    <div
+                      key={item.id}
+                      style={{
+                        background: isButtonDisabled ? "rgba(255, 255, 255, 0.015)" : "rgba(255, 255, 255, 0.025)",
+                        border: isShopOutOfStock
+                          ? "1px solid rgba(239, 68, 68, 0.2)"
+                          : isAllInCart
+                          ? "1px solid rgba(245, 158, 11, 0.25)"
+                          : "1px solid rgba(255, 255, 255, 0.07)",
+                        borderRadius: "14px",
+                        padding: "14px",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: "12px",
+                        opacity: isButtonDisabled ? 0.6 : 1,
+                        transition: "all 0.2s ease",
+                      }}
+                    >
+                      <div style={{ flex: "1" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                          <h3 style={{ fontSize: "0.98rem", fontWeight: "600", color: isButtonDisabled ? "#9ca3af" : "#fff" }}>
+                            {item.name}
+                          </h3>
+                          {item.has_customizations && (
+                            <span style={{
+                              fontSize: "0.68rem",
+                              background: "rgba(245, 158, 11, 0.15)",
+                              color: "#f59e0b",
+                              padding: "2px 6px",
+                              borderRadius: "4px",
+                              fontWeight: "600"
+                            }}>
+                              Customizable
+                            </span>
+                          )}
+                        </div>
+
+                        <div style={{ fontSize: "1.05rem", fontWeight: "700", color: isButtonDisabled ? "#6b7280" : "#10b981", marginTop: "4px" }}>
+                          ₹{item.price}
+                        </div>
+
+                        {item.description && (
+                          <p style={{ fontSize: "0.78rem", color: "#9ca3af", marginTop: "4px", lineHeight: "1.35" }}>
+                            {item.description}
+                          </p>
+                        )}
+
+                        {/* Stock Availability Indicator Badge */}
+                        <div style={{ marginTop: "8px" }}>
+                          {isShopOutOfStock ? (
+                            <span style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              fontSize: "0.72rem",
+                              color: "#ef4444",
+                              background: "rgba(239, 68, 68, 0.12)",
+                              border: "1px solid rgba(239, 68, 68, 0.3)",
+                              padding: "2px 8px",
+                              borderRadius: "6px",
+                              fontWeight: "700"
+                            }}>
+                              ● Out of Stock (0 available)
+                            </span>
+                          ) : isAllInCart ? (
+                            <span style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              fontSize: "0.72rem",
+                              color: "#f59e0b",
+                              background: "rgba(245, 158, 11, 0.15)",
+                              border: "1px solid rgba(245, 158, 11, 0.35)",
+                              padding: "2px 8px",
+                              borderRadius: "6px",
+                              fontWeight: "700"
+                            }}>
+                              ✓ Max In Cart ({inCartQty} added • 0 left)
+                            </span>
+                          ) : item.track_stock ? (
+                            isLowStock ? (
+                              <span style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                                fontSize: "0.72rem",
+                                color: "#f59e0b",
+                                background: "rgba(245, 158, 11, 0.12)",
+                                border: "1px solid rgba(245, 158, 11, 0.3)",
+                                padding: "2px 8px",
+                                borderRadius: "6px",
+                                fontWeight: "700"
+                              }}>
+                                ⚡ Low Stock: {effectiveStock} left {inCartQty > 0 ? `(${inCartQty} in cart)` : ""}
+                              </span>
+                            ) : (
+                              <span style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                                fontSize: "0.72rem",
+                                color: "#10b981",
+                                background: "rgba(16, 185, 129, 0.1)",
+                                border: "1px solid rgba(16, 185, 129, 0.25)",
+                                padding: "2px 8px",
+                                borderRadius: "6px",
+                                fontWeight: "600"
+                              }}>
+                                📦 Stock: {effectiveStock} available {inCartQty > 0 ? `(${inCartQty} in cart)` : ""}
+                              </span>
+                            )
+                          ) : (
+                            <span style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              fontSize: "0.72rem",
+                              color: "#9ca3af",
+                              background: "rgba(255, 255, 255, 0.04)",
+                              border: "1px solid rgba(255, 255, 255, 0.08)",
+                              padding: "2px 8px",
+                              borderRadius: "6px",
+                              fontWeight: "500"
+                            }}>
+                              ✓ Fresh Daily
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Action Button: Disabled when stock is 0 or all in cart */}
+                      <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "flex-end" }}>
+                        {isButtonDisabled ? (
+                          <button
+                            disabled
+                            aria-disabled="true"
+                            title={isShopOutOfStock ? "Out of stock - Currently unavailable" : "All available stock already added to cart"}
+                            style={{
+                              background: isShopOutOfStock ? "rgba(239, 68, 68, 0.08)" : "rgba(245, 158, 11, 0.1)",
+                              border: isShopOutOfStock ? "1px solid rgba(239, 68, 68, 0.25)" : "1px solid rgba(245, 158, 11, 0.3)",
+                              color: isShopOutOfStock ? "#ef4444" : "#f59e0b",
+                              padding: "7px 14px",
+                              borderRadius: "8px",
+                              fontSize: "0.8rem",
+                              fontWeight: "700",
+                              cursor: "not-allowed",
+                              opacity: 0.7
+                            }}
+                          >
+                            {isShopOutOfStock ? "Sold Out" : "Max in Cart"}
+                          </button>
+                        ) : item.has_customizations ? (
+                          <button
+                            onClick={() => handleOpenCustomization(item)}
+                            style={{
+                              background: "rgba(245, 158, 11, 0.15)",
+                              border: "1px solid rgba(245, 158, 11, 0.4)",
+                              color: "#f59e0b",
+                              padding: "7px 14px",
+                              borderRadius: "8px",
+                              fontSize: "0.8rem",
+                              fontWeight: "700",
+                              cursor: "pointer",
+                              transition: "transform 0.15s ease"
+                            }}
+                          >
+                            Customize +
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleAddToCart(item, null, 1)}
+                            style={{
+                              background: "linear-gradient(135deg, #10b981, #059669)",
+                              border: "none",
+                              color: "#fff",
+                              padding: "7px 16px",
+                              borderRadius: "8px",
+                              fontSize: "0.8rem",
+                              fontWeight: "700",
+                              cursor: "pointer",
+                              boxShadow: "0 2px 8px rgba(16, 185, 129, 0.35)",
+                              transition: "transform 0.15s ease"
+                            }}
+                          >
+                            ADD +
+                          </button>
                         )}
                       </div>
-
-                      <div style={{ fontSize: "1.05rem", fontWeight: "700", color: "#10b981", marginTop: "4px" }}>
-                        ₹{item.price}
-                      </div>
-
-                      {item.description && (
-                        <p style={{ fontSize: "0.78rem", color: "#9ca3af", marginTop: "4px", lineHeight: "1.35" }}>
-                          {item.description}
-                        </p>
-                      )}
-
-                      {/* Stock Alert Badge */}
-                      {item.is_low_stock && item.is_available && (
-                        <div style={{ fontSize: "0.7rem", color: "#f59e0b", marginTop: "6px", fontWeight: "600" }}>
-                          ⚡ Only {item.available_quantity} left in shop
-                        </div>
-                      )}
                     </div>
-
-                    {/* Action Button */}
-                    <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "flex-end" }}>
-                      {!item.is_available ? (
-                        <span style={{
-                          fontSize: "0.72rem",
-                          color: "#ef4444",
-                          background: "rgba(239, 68, 68, 0.15)",
-                          padding: "4px 8px",
-                          borderRadius: "6px",
-                          fontWeight: "600"
-                        }}>
-                          Sold Out
-                        </span>
-                      ) : item.has_customizations ? (
-                        <button
-                          onClick={() => handleOpenCustomization(item)}
-                          style={{
-                            background: "rgba(245, 158, 11, 0.15)",
-                            border: "1px solid rgba(245, 158, 11, 0.4)",
-                            color: "#f59e0b",
-                            padding: "6px 12px",
-                            borderRadius: "8px",
-                            fontSize: "0.8rem",
-                            fontWeight: "700",
-                            cursor: "pointer"
-                          }}
-                        >
-                          Customize +
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleAddToCart(item, null, 1)}
-                          style={{
-                            background: "linear-gradient(135deg, #10b981, #059669)",
-                            border: "none",
-                            color: "#fff",
-                            padding: "6px 14px",
-                            borderRadius: "8px",
-                            fontSize: "0.8rem",
-                            fontWeight: "700",
-                            cursor: "pointer"
-                          }}
-                        >
-                          ADD +
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
           ))
@@ -682,8 +862,49 @@ function CustomerMenuContent() {
                 <h3 style={{ fontSize: "1.2rem", fontWeight: "700", color: "#fff" }}>
                   {selectedItem.name}
                 </h3>
-                <div style={{ fontSize: "1.1rem", fontWeight: "700", color: "#10b981", marginTop: "2px" }}>
-                  ₹{selectedItem.price}
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "4px", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: "1.1rem", fontWeight: "700", color: "#10b981" }}>
+                    ₹{selectedItem.price}
+                  </span>
+                  {selectedItem.track_stock && (() => {
+                    const selectedInCart = cartItems
+                      .filter((c) => c.item_id === selectedItem.id)
+                      .reduce((sum, c) => sum + c.quantity, 0);
+                    const selectedBaseStock = Number(selectedItem.available_quantity || 0);
+                    const selectedRemaining = Math.max(0, selectedBaseStock - selectedInCart);
+
+                    return (
+                      <span style={{
+                        fontSize: "0.75rem",
+                        fontWeight: "700",
+                        padding: "2px 8px",
+                        borderRadius: "6px",
+                        background: selectedBaseStock <= 0
+                          ? "rgba(239, 68, 68, 0.15)"
+                          : selectedRemaining <= 0
+                          ? "rgba(245, 158, 11, 0.15)"
+                          : selectedRemaining <= (selectedItem.low_stock_threshold ?? 5)
+                          ? "rgba(245, 158, 11, 0.15)"
+                          : "rgba(16, 185, 129, 0.15)",
+                        color: selectedBaseStock <= 0
+                          ? "#ef4444"
+                          : selectedRemaining <= 0
+                          ? "#f59e0b"
+                          : selectedRemaining <= (selectedItem.low_stock_threshold ?? 5)
+                          ? "#f59e0b"
+                          : "#10b981",
+                        border: `1px solid ${selectedBaseStock <= 0 ? "rgba(239, 68, 68, 0.3)" : selectedRemaining <= (selectedItem.low_stock_threshold ?? 5) ? "rgba(245, 158, 11, 0.3)" : "rgba(16, 185, 129, 0.3)"}`
+                      }}>
+                        {selectedBaseStock <= 0
+                          ? "🚫 Out of Stock"
+                          : selectedRemaining <= 0
+                          ? `⚠️ Max in Cart (${selectedInCart} added)`
+                          : selectedRemaining <= (selectedItem.low_stock_threshold ?? 5)
+                          ? `⚡ Only ${selectedRemaining} left (${selectedInCart} in cart)`
+                          : `📦 Stock: ${selectedRemaining} available`}
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
               <button
@@ -782,7 +1003,24 @@ function CustomerMenuContent() {
                 </button>
                 <span style={{ fontSize: "1.1rem", fontWeight: "700" }}>{itemQuantity}</span>
                 <button
-                  onClick={() => setItemQuantity(itemQuantity + 1)}
+                  onClick={() => {
+                    const inCart = cartItems
+                      .filter((c) => c.item_id === selectedItem.id)
+                      .reduce((sum, c) => sum + c.quantity, 0);
+                    const remaining = selectedItem.track_stock
+                      ? Math.max(0, Number(selectedItem.available_quantity || 0) - inCart)
+                      : 999;
+                    if (selectedItem.track_stock && itemQuantity >= remaining) return;
+                    setItemQuantity(itemQuantity + 1);
+                  }}
+                  disabled={(() => {
+                    if (!selectedItem.track_stock) return false;
+                    const inCart = cartItems
+                      .filter((c) => c.item_id === selectedItem.id)
+                      .reduce((sum, c) => sum + c.quantity, 0);
+                    const remaining = Math.max(0, Number(selectedItem.available_quantity || 0) - inCart);
+                    return itemQuantity >= remaining;
+                  })()}
                   style={{
                     width: "36px",
                     height: "36px",
@@ -800,23 +1038,41 @@ function CustomerMenuContent() {
             </div>
 
             {/* Confirm CTA */}
-            <button
-              onClick={() => handleAddToCart(selectedItem, { sugar: customSugar, strength: customStrength }, itemQuantity)}
-              style={{
-                width: "100%",
-                background: "linear-gradient(135deg, #10b981, #059669)",
-                border: "none",
-                color: "#fff",
-                padding: "14px",
-                borderRadius: "12px",
-                fontSize: "0.95rem",
-                fontWeight: "700",
-                cursor: "pointer",
-                boxShadow: "0 4px 16px rgba(16, 185, 129, 0.4)"
-              }}
-            >
-              Add to Order • ₹{(Number(selectedItem.price) * itemQuantity).toFixed(2)}
-            </button>
+            {(() => {
+              const inCart = cartItems
+                .filter((c) => c.item_id === selectedItem.id)
+                .reduce((sum, c) => sum + c.quantity, 0);
+              const baseStock = Number(selectedItem.available_quantity || 0);
+              const remaining = selectedItem.track_stock ? Math.max(0, baseStock - inCart) : 999;
+              const isBlocked = selectedItem.track_stock && (remaining <= 0 || itemQuantity > remaining);
+
+              return (
+                <button
+                  onClick={() => handleAddToCart(selectedItem, { sugar: customSugar, strength: customStrength }, itemQuantity)}
+                  disabled={isBlocked}
+                  style={{
+                    width: "100%",
+                    background: isBlocked
+                      ? "rgba(239, 68, 68, 0.15)"
+                      : "linear-gradient(135deg, #10b981, #059669)",
+                    border: isBlocked ? "1px solid rgba(239, 68, 68, 0.3)" : "none",
+                    color: isBlocked ? "#ef4444" : "#fff",
+                    padding: "14px",
+                    borderRadius: "12px",
+                    fontSize: "0.95rem",
+                    fontWeight: "700",
+                    cursor: isBlocked ? "not-allowed" : "pointer",
+                    boxShadow: isBlocked ? "none" : "0 4px 16px rgba(16, 185, 129, 0.4)"
+                  }}
+                >
+                  {isBlocked
+                    ? remaining <= 0
+                      ? "Max In Cart • Limit Reached"
+                      : "Sold Out • Out of Stock"
+                    : `Add to Order • ₹${(Number(selectedItem.price) * itemQuantity).toFixed(2)}`}
+                </button>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -928,8 +1184,48 @@ function CustomerMenuContent() {
                         </div>
                       )}
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                      <span style={{ fontSize: "0.95rem", fontWeight: "700", color: "#10b981" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      {/* Quantity decrement/increment */}
+                      <div style={{
+                        display: "flex",
+                        alignItems: "center",
+                        background: "rgba(255, 255, 255, 0.08)",
+                        borderRadius: "6px"
+                      }}>
+                        <button
+                          onClick={() => handleUpdateCartQty(idx, -1)}
+                          style={{
+                            background: "transparent",
+                            border: "none",
+                            color: "#fff",
+                            width: "24px",
+                            height: "24px",
+                            cursor: "pointer",
+                            fontSize: "0.9rem"
+                          }}
+                        >
+                          -
+                        </button>
+                        <span style={{ fontSize: "0.85rem", fontWeight: "700", minWidth: "18px", textAlign: "center" }}>
+                          {c.quantity}
+                        </span>
+                        <button
+                          onClick={() => handleUpdateCartQty(idx, 1)}
+                          style={{
+                            background: "transparent",
+                            border: "none",
+                            color: "#fff",
+                            width: "24px",
+                            height: "24px",
+                            cursor: "pointer",
+                            fontSize: "0.9rem"
+                          }}
+                        >
+                          +
+                        </button>
+                      </div>
+
+                      <span style={{ fontSize: "0.95rem", fontWeight: "700", color: "#10b981", minWidth: "60px", textAlign: "right" }}>
                         ₹{(c.price * c.quantity).toFixed(2)}
                       </span>
                       <button

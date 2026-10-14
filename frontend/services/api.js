@@ -1,19 +1,61 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+let activeApiBaseUrl = API_BASE_URL;
 
 /**
- * Universal fetch wrapper for API communication
+ * Universal fetch wrapper for API communication with automatic loopback fallback
+ * (localhost <-> 127.0.0.1 on Windows) and descriptive connection diagnostics.
  */
 async function fetchFromApi(endpoint, options = {}) {
-  const url = `${API_BASE_URL}${endpoint}`;
-  try {
-    const response = await fetch(url, {
+  const controller = new AbortController();
+  const timeoutMs = options.timeout || 8000;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  const primaryUrl = `${activeApiBaseUrl}${endpoint}`;
+
+  const executeFetch = async (targetUrl) => {
+    return await fetch(targetUrl, {
       ...options,
+      signal: options.signal || controller.signal,
       headers: {
         "Content-Type": "application/json",
         ...(options.headers || {}),
       },
       cache: "no-store",
     });
+  };
+
+  try {
+    let response;
+    try {
+      response = await executeFetch(primaryUrl);
+    } catch (networkErr) {
+      // If primary loopback failed (common on Windows due to IPv6 ::1 vs IPv4 127.0.0.1),
+      // seamlessly attempt the alternate loopback host
+      let fallbackUrl = null;
+      if (primaryUrl.includes("localhost:8000")) {
+        fallbackUrl = primaryUrl.replace("localhost:8000", "127.0.0.1:8000");
+      } else if (primaryUrl.includes("127.0.0.1:8000")) {
+        fallbackUrl = primaryUrl.replace("127.0.0.1:8000", "localhost:8000");
+      }
+
+      if (fallbackUrl && !controller.signal.aborted) {
+        try {
+          response = await executeFetch(fallbackUrl);
+          // If fallback succeeded, remember the working base URL for subsequent calls
+          if (fallbackUrl.includes("127.0.0.1:8000")) {
+            activeApiBaseUrl = activeApiBaseUrl.replace("localhost:8000", "127.0.0.1:8000");
+          } else if (fallbackUrl.includes("localhost:8000")) {
+            activeApiBaseUrl = activeApiBaseUrl.replace("127.0.0.1:8000", "localhost:8000");
+          }
+        } catch {
+          throw networkErr;
+        }
+      } else {
+        throw networkErr;
+      }
+    }
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -37,7 +79,20 @@ async function fetchFromApi(endpoint, options = {}) {
 
     return await response.json();
   } catch (error) {
-    console.error(`API Call failed on [${endpoint}]:`, error);
+    clearTimeout(timeoutId);
+    if (error.name === "AbortError") {
+      const timeoutError = new Error("Backend connection timed out (server not responding). Please check the backend.");
+      console.warn(`API Call timed out on [${endpoint}]:`, timeoutError.message);
+      throw timeoutError;
+    }
+
+    if (error.name === "TypeError" && (error.message.includes("fetch") || error.message.includes("network"))) {
+      const connError = new Error(`Cannot connect to backend server at ${activeApiBaseUrl}. Ensure the FastAPI server is running on port 8000.`);
+      console.warn(`API Call connection error on [${endpoint}]: ${connError.message}`);
+      throw connError;
+    }
+
+    console.warn(`API Call failed on [${endpoint}]:`, error.message || error);
     throw error;
   }
 }

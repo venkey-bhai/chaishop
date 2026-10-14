@@ -232,7 +232,7 @@ def create_order(
                     detail=f"Insufficient stock for '{menu_item.name}'. Available: {menu_item.available_quantity}, requested: {line_item.quantity}."
                 )
             # Decrement inventory stock
-            menu_item.available_quantity -= line_item.quantity
+            menu_item.available_quantity = max(0, menu_item.available_quantity - line_item.quantity)
 
         unit_price = Decimal(str(menu_item.price))
         total_price = unit_price * line_item.quantity
@@ -623,9 +623,80 @@ def update_order_status(
         )
 
     old_status = order.order_status
-    order.order_status = payload.order_status
-    db.commit()
-    db.refresh(order)
+    new_status = payload.order_status
+
+    if old_status != new_status:
+        # If order is being cancelled, restore inventory for tracked menu items
+        if new_status == OrderStatus.CANCELLED:
+            for item in (order.items or []):
+                if item.menu_item_id:
+                    menu_item = db.query(MenuItem).filter(MenuItem.id == item.menu_item_id).first()
+                    if menu_item and menu_item.track_stock:
+                        menu_item.available_quantity += item.quantity
+                        logger.info(
+                            f"Restored stock for MenuItem '{menu_item.name}' (ID: {menu_item.id}) by {item.quantity} units. "
+                            f"New available stock: {menu_item.available_quantity} (Order #{order.daily_token_number} cancelled)"
+                        )
+
+            # Revert credit debt if this order was paid on credit
+            if order.payment_method == PaymentMethod.CREDIT and order.customer_id:
+                customer = db.query(Customer).filter(Customer.id == order.customer_id).first()
+                if customer and customer.credit_account:
+                    credit_account = customer.credit_account
+                    credit_account.current_balance = max(Decimal("0.00"), credit_account.current_balance - order.total_amount)
+                    refund_tx = CreditTransaction(
+                        customer_id=customer.id,
+                        order_id=order.id,
+                        transaction_type=CreditTransactionType.ADJUSTMENT,
+                        amount=order.total_amount,
+                        balance_after=credit_account.current_balance,
+                        description=f"Credit reversed for cancelled Order #{order.daily_token_number} ({order.order_number})",
+                        recorded_by_user_id=current_user.id if current_user else None,
+                    )
+                    db.add(refund_tx)
+
+            # Update payment record if pending or completed
+            payment = db.query(Payment).filter(Payment.order_id == order.id).first()
+            if payment:
+                if payment.payment_status == PaymentRecordStatus.PENDING:
+                    payment.payment_status = PaymentRecordStatus.FAILED
+                elif payment.payment_status == PaymentRecordStatus.COMPLETED:
+                    payment.payment_status = PaymentRecordStatus.REFUNDED
+
+            if order.payment_status == PaymentStatus.PENDING:
+                order.payment_status = PaymentStatus.FAILED
+
+        # Re-opening previously cancelled order: re-deduct inventory
+        elif old_status == OrderStatus.CANCELLED:
+            for item in (order.items or []):
+                if item.menu_item_id:
+                    menu_item = db.query(MenuItem).filter(MenuItem.id == item.menu_item_id).first()
+                    if menu_item and menu_item.track_stock:
+                        menu_item.available_quantity = max(0, menu_item.available_quantity - item.quantity)
+                        logger.info(
+                            f"Re-deducted stock for MenuItem '{menu_item.name}' (ID: {menu_item.id}) by {item.quantity} units. "
+                            f"New available stock: {menu_item.available_quantity} (Order #{order.daily_token_number} re-opened)"
+                        )
+
+            if order.payment_method == PaymentMethod.CREDIT and order.customer_id:
+                customer = db.query(Customer).filter(Customer.id == order.customer_id).first()
+                if customer and customer.credit_account:
+                    credit_account = customer.credit_account
+                    credit_account.current_balance += order.total_amount
+                    recharge_tx = CreditTransaction(
+                        customer_id=customer.id,
+                        order_id=order.id,
+                        transaction_type=CreditTransactionType.CREDIT,
+                        amount=order.total_amount,
+                        balance_after=credit_account.current_balance,
+                        description=f"Credit re-applied for re-opened Order #{order.daily_token_number} ({order.order_number})",
+                        recorded_by_user_id=current_user.id if current_user else None,
+                    )
+                    db.add(recharge_tx)
+
+        order.order_status = new_status
+        db.commit()
+        db.refresh(order)
 
     logger.info(
         f"Order #{order.daily_token_number} status changed from {old_status} "

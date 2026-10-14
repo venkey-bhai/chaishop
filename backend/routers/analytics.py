@@ -3,8 +3,11 @@ import calendar
 from datetime import datetime, date, timedelta, timezone
 from decimal import Decimal
 from typing import Dict, List, Optional
-# pyrefly: ignore [missing-import]
-import numpy as np
+
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, desc, or_, and_, cast, Date
@@ -520,19 +523,32 @@ def get_sales_forecast(
         daily_sales_series.append(float(day_total))
 
     # Fallback to realistic tea shop baseline if database has fresh or limited historical records
-    avg_sales_val = float(np.mean(daily_sales_series)) if len(daily_sales_series) > 0 else 0.0
+    if np is not None:
+        avg_sales_val = float(np.mean(daily_sales_series)) if len(daily_sales_series) > 0 else 0.0
+    else:
+        avg_sales_val = float(sum(daily_sales_series) / len(daily_sales_series)) if len(daily_sales_series) > 0 else 0.0
+
     if avg_sales_val < 500.0:
         base_daily = 3500.0
     else:
         base_daily = avg_sales_val
 
-    # 2. Linear regression / trend fitting with NumPy
-    x = np.arange(history_window)
-    # Add gentle weekend multiplier pattern (Friday/Saturday/Sunday peak for tea shops)
-    y = np.array([base_daily * (1.15 if (history_start + timedelta(days=i)).weekday() in (4, 5, 6) else 0.95) for i in range(history_window)])
+    # 2. Linear regression / trend fitting
+    if np is not None:
+        x = np.arange(history_window)
+        # Add gentle weekend multiplier pattern (Friday/Saturday/Sunday peak for tea shops)
+        y = np.array([base_daily * (1.15 if (history_start + timedelta(days=i)).weekday() in (4, 5, 6) else 0.95) for i in range(history_window)])
+        slope, intercept = np.polyfit(x, y, 1)
+    else:
+        x_vals = list(range(history_window))
+        y_vals = [base_daily * (1.15 if (history_start + timedelta(days=i)).weekday() in (4, 5, 6) else 0.95) for i in range(history_window)]
+        n = len(x_vals)
+        mean_x = sum(x_vals) / n if n > 0 else 0.0
+        mean_y = sum(y_vals) / n if n > 0 else 0.0
+        denom = sum((xi - mean_x) ** 2 for xi in x_vals)
+        slope = sum((xi - mean_x) * (yi - mean_y) for xi, yi in zip(x_vals, y_vals)) / denom if denom != 0 else 0.0
+        intercept = mean_y - slope * mean_x
 
-    # Fit linear polynomial (degree 1)
-    slope, intercept = np.polyfit(x, y, 1)
     growth_rate = (slope / base_daily) * 100
 
     # 3. Project next 7 days

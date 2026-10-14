@@ -394,5 +394,50 @@ class TestPhase7OrderPlacementAndTokens(unittest.TestCase):
         self.assertTrue(any(c["phone"] == unique_phone for c in cust_list))
 
 
+    def test_15_cancelling_order_restores_stock_to_menu_item(self):
+        """Cancelling an order adds its items' quantities back to menu stock (and is idempotent)."""
+        # 1. Fetch current stock
+        item_before = self.client.get(f"/api/menu/items/{self.item_tracked['id']}").json()
+        initial_stock = item_before["available_quantity"]
+
+        # 2. Place an order for 3 units
+        phone = f"95{str(uuid.uuid4().int)[:8]}"[:10]
+        order_res = self.client.post("/api/orders", json={
+            "customer_name": "Cancel Test Customer",
+            "customer_phone": phone,
+            "items": [{"menu_item_id": self.item_tracked["id"], "quantity": 3}]
+        })
+        self.assertEqual(order_res.status_code, 201)
+        order_id = order_res.json()["id"]
+
+        # 3. Verify stock decreased by 3
+        item_after_order = self.client.get(f"/api/menu/items/{self.item_tracked['id']}").json()
+        self.assertEqual(item_after_order["available_quantity"], initial_stock - 3)
+
+        # 4. Cancel the order
+        cancel_res = self.client.patch(
+            f"/api/orders/{order_id}/status",
+            json={"order_status": "CANCELLED"},
+            headers=self.staff_headers
+        )
+        self.assertEqual(cancel_res.status_code, 200)
+        self.assertEqual(cancel_res.json()["order_status"], "CANCELLED")
+
+        # 5. Verify stock increased back by 3 (fully restored to initial_stock)
+        item_after_cancel = self.client.get(f"/api/menu/items/{self.item_tracked['id']}").json()
+        self.assertEqual(item_after_cancel["available_quantity"], initial_stock)
+
+        # 6. Idempotency test: cancelling again should not re-add stock
+        cancel_again = self.client.patch(
+            f"/api/orders/{order_id}/status",
+            json={"order_status": "CANCELLED"},
+            headers=self.staff_headers
+        )
+        self.assertEqual(cancel_again.status_code, 200)
+        item_after_second_cancel = self.client.get(f"/api/menu/items/{self.item_tracked['id']}").json()
+        self.assertEqual(item_after_second_cancel["available_quantity"], initial_stock)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+

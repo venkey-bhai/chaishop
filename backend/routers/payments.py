@@ -317,6 +317,7 @@ def get_order_upi_qr(
         qr.make(fit=True)
         img = qr.make_image(fill_color="black", back_color="white")
         buf = io.BytesIO()
+        # pyrefly: ignore [unexpected-keyword]
         img.save(buf, format="PNG")
         qr_image_data = f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode('utf-8')}"
     except Exception as qr_err:

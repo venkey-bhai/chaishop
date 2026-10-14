@@ -54,7 +54,11 @@ export default function OrdersPage() {
     try {
       const token = await getValidAdminToken();
       await updateOrderStatus(orderId, newStatus, token);
-      setActionMsg(`Token #${tokenNumber} updated to ${newStatus}!`);
+      if (newStatus === "CANCELLED") {
+        setActionMsg(`Token #${tokenNumber} cancelled! Quantities have been added back to the menu stock.`);
+      } else {
+        setActionMsg(`Token #${tokenNumber} updated to ${newStatus}!`);
+      }
       await loadOrders();
     } catch (err) {
       setActionMsg(`Failed to update order status: ${err.message}`);

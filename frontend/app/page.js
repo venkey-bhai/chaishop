@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { 
   getHealthStatus, 
@@ -54,6 +54,20 @@ export default function Home() {
   const [token, setToken] = useState("");
   const [currentUser, setCurrentUser] = useState(null);
 
+  // Restore session from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedToken = localStorage.getItem("chaiflow_token");
+      const savedUserStr = localStorage.getItem("chaiflow_user");
+      if (savedToken) {
+        setToken(savedToken);
+        if (savedUserStr) {
+          setCurrentUser(JSON.parse(savedUserStr));
+        }
+      }
+    } catch (e) {}
+  }, []);
+
   async function handleDemoRegister() {
     setAuthLoading(true);
     setAuthResponse(null);
@@ -68,6 +82,12 @@ export default function Home() {
       setAuthResponse({ action: "Customer Registration", data: res });
       setToken(res.access_token);
       setCurrentUser(res.user);
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("chaiflow_token", res.access_token);
+          localStorage.setItem("chaiflow_user", JSON.stringify(res.user));
+        } catch (e) {}
+      }
     } catch (err) {
       setAuthResponse({ action: "Customer Registration", error: err.message });
     } finally {
@@ -86,6 +106,12 @@ export default function Home() {
       setAuthResponse({ action: "Admin Login", data: res });
       setToken(res.access_token);
       setCurrentUser(res.user);
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("chaiflow_token", res.access_token);
+          localStorage.setItem("chaiflow_user", JSON.stringify(res.user));
+        } catch (e) {}
+      }
     } catch (err) {
       setAuthResponse({ action: "Admin Login", error: err.message });
     } finally {
@@ -154,6 +180,12 @@ export default function Home() {
     }
     setToken("");
     setCurrentUser(null);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.removeItem("chaiflow_token");
+        localStorage.removeItem("chaiflow_user");
+      } catch (e) {}
+    }
   }
 
   // Phase 4 Customer Management State
@@ -163,14 +195,58 @@ export default function Home() {
   const [customerFilterCredit, setCustomerFilterCredit] = useState("");
   const [creditActionMsg, setCreditActionMsg] = useState("");
 
+  const adminTokenPromiseRef = useRef(null);
+
   async function getValidAdminToken() {
     if (token && currentUser?.role === "ADMIN") {
       return token;
     }
-    const loginRes = await loginUser({ mobile_number: "9999999999", password: "admin123" });
-    setToken(loginRes.access_token);
-    setCurrentUser(loginRes.user);
-    return loginRes.access_token;
+
+    // Check localStorage first
+    if (typeof window !== "undefined") {
+      try {
+        const savedToken = localStorage.getItem("chaiflow_token");
+        const savedUserStr = localStorage.getItem("chaiflow_user");
+        if (savedToken && savedUserStr) {
+          const parsedUser = JSON.parse(savedUserStr);
+          if (parsedUser?.role === "ADMIN") {
+            setToken(savedToken);
+            setCurrentUser(parsedUser);
+            return savedToken;
+          }
+        }
+      } catch (e) {}
+    }
+
+    // Deduplicate concurrent in-flight admin login calls
+    if (adminTokenPromiseRef.current) {
+      return adminTokenPromiseRef.current;
+    }
+
+    adminTokenPromiseRef.current = (async () => {
+      try {
+        const loginRes = await loginUser({ mobile_number: "9999999999", password: "admin123" });
+        if (loginRes?.access_token) {
+          setToken(loginRes.access_token);
+          setCurrentUser(loginRes.user);
+          if (typeof window !== "undefined") {
+            try {
+              localStorage.setItem("chaiflow_token", loginRes.access_token);
+              localStorage.setItem("chaiflow_user", JSON.stringify(loginRes.user));
+            } catch (e) {}
+          }
+          return loginRes.access_token;
+        }
+        return null;
+      } catch (err) {
+        console.warn("Auto-admin login not completed:", err.message);
+        return null;
+      } finally {
+        adminTokenPromiseRef.current = null;
+      }
+    })();
+
+    return adminTokenPromiseRef.current;
   }
 
   async function loadCustomerDirectory(overrideSearch = customerSearch, overrideFilter = customerFilterCredit) {
@@ -178,6 +254,10 @@ export default function Home() {
     setCreditActionMsg("");
     try {
       const activeToken = await getValidAdminToken();
+      if (!activeToken) {
+        setCreditActionMsg("Admin session required to load customer directory.");
+        return;
+      }
       const res = await getCustomers(
         {
           search: overrideSearch,
@@ -429,6 +509,10 @@ export default function Home() {
     setExpenseLoading(true);
     try {
       const activeToken = await getValidAdminToken();
+      if (!activeToken) {
+        setExpenseActionMsg("Admin session required to load expenses.");
+        return;
+      }
       const catVal = overrideCat !== null ? overrideCat : expenseFilterCat;
       const todayVal = overrideToday !== null ? overrideToday : expenseFilterToday;
       const searchVal = overrideSearch !== null ? overrideSearch : expenseSearch;
@@ -451,8 +535,8 @@ export default function Home() {
       setExpenseAnalytics(analyticsRes);
       setExpenseCategories(catsRes || []);
     } catch (err) {
-      console.error("Failed to load expense data:", err);
-      setExpenseActionMsg(`Failed to load expenses: ${err.message}`);
+      console.warn("Expense data load notice:", err.message);
+      setExpenseActionMsg(`Expenses unavailable: ${err.message}`);
     } finally {
       setExpenseLoading(false);
     }
@@ -530,6 +614,10 @@ export default function Home() {
     setAnalyticsError("");
     try {
       const activeToken = await getValidAdminToken();
+      if (!activeToken) {
+        setAnalyticsError("Analytics requires an active Admin session or running backend connection.");
+        return;
+      }
       // Always load dashboard summary
       const summary = await getDashboardSummary(activeToken);
       setDashboardSummary(summary);
@@ -551,8 +639,8 @@ export default function Home() {
         setMonthlyReport(monthly);
       }
     } catch (err) {
-      console.error("Failed to load analytics data:", err);
-      setAnalyticsError(`Failed to load analytics: ${err.message}`);
+      console.warn("Analytics data load notice:", err.message);
+      setAnalyticsError(`Analytics unavailable: ${err.message}`);
     } finally {
       setAnalyticsLoading(false);
     }
@@ -1770,6 +1858,28 @@ export default function Home() {
                         }}
                       >
                         Handover / Complete ✅
+                      </button>
+                    )}
+                    {o.order_status !== "COMPLETED" && o.order_status !== "CANCELLED" && (
+                      <button
+                        onClick={() => {
+                          if (window.confirm(`Cancel Token #${o.daily_token_number || o.token_number}? Quantities will be added back to menu stock.`)) {
+                            handleUpdateOrderStatus(o.order_id, "CANCELLED");
+                          }
+                        }}
+                        style={{
+                          background: "rgba(239, 68, 68, 0.15)",
+                          border: "1px solid rgba(239, 68, 68, 0.35)",
+                          color: "#ef4444",
+                          padding: "6px 10px",
+                          borderRadius: "6px",
+                          cursor: "pointer",
+                          fontSize: "0.75rem",
+                          fontWeight: "700"
+                        }}
+                        title="Cancel order and return items to menu stock"
+                      >
+                        Cancel ✕
                       </button>
                     )}
                   </div>
@@ -3430,7 +3540,7 @@ export default function Home() {
                     </tr>
                   ) : (
                     productReport.top_performers.map((item, idx) => (
-                      <tr key={item.item_id} style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.04)" }}>
+                      <tr key={item.item_id ? `item-${item.item_id}` : `top-performer-${item.name}-${idx}`} style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.04)" }}>
                         <td style={{ padding: "12px 16px", fontWeight: "800", color: idx === 0 ? "#f59e0b" : idx === 1 ? "#9ca3af" : idx === 2 ? "#d97706" : "#6b7280" }}>
                           #{idx + 1}
                         </td>
@@ -3516,8 +3626,8 @@ export default function Home() {
                       </td>
                     </tr>
                   ) : (
-                    creditReport.customer_debts.map((c) => (
-                      <tr key={c.customer_id} style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.04)" }}>
+                    creditReport.customer_debts.map((c, idx) => (
+                      <tr key={c.customer_id ? `cust-${c.customer_id}` : `debt-${c.mobile_number || idx}`} style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.04)" }}>
                         <td style={{ padding: "12px 16px", fontWeight: "700", color: "var(--text-main)" }}>
                           {c.customer_name}
                         </td>
