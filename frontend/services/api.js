@@ -7,9 +7,17 @@ function resolveApiBaseUrl() {
     return process.env.BACKEND_INTERNAL_URL || API_BASE_URL;
   }
 
-  // When loaded via devtunnels.ms or public hostname, route through same-origin Next.js rewrites
-  // to avoid cross-port devtunnel anti-phishing interstitial blocks and CORS preflight timeouts.
-  if (/\.devtunnels\.ms$/i.test(window.location.hostname)) {
+  const isLocalHost =
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1";
+
+  // When loaded on a public domain (e.g. vercel.app, devtunnels, or custom domain):
+  // NEVER call 127.0.0.1 from the browser, which causes mixed content / connection refused errors.
+  if (!isLocalHost) {
+    if (activeApiBaseUrl && activeApiBaseUrl.startsWith("https://")) {
+      return activeApiBaseUrl;
+    }
+    // Route via same-origin Next.js rewrites to BACKEND_INTERNAL_URL
     return "";
   }
 
@@ -145,7 +153,8 @@ async function fetchFromApi(endpoint, options = {}) {
     }
 
     if (error.name === "TypeError" && (error.message.includes("fetch") || error.message.includes("network"))) {
-      const connError = new Error(`Cannot connect to backend server at ${activeApiBaseUrl}. Ensure the FastAPI server is running on port 8000.`);
+      const target = resolveApiBaseUrl() || activeApiBaseUrl || "configured backend API";
+      const connError = new Error(`Cannot connect to backend server at ${target}. Please verify that the backend is deployed and running.`);
       console.warn(`API Call connection error on [${endpoint}]: ${connError.message}`);
       throw connError;
     }
