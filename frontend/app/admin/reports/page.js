@@ -374,7 +374,7 @@ export default function ReportsPage() {
               </h4>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px" }}>
                 {dailyReport.top_items_today.map((item, idx) => (
-                  <div key={idx} style={{ background: "var(--bg-card-subtle)", padding: "12px 16px", borderRadius: "8px", border: "1px solid var(--border-subtle)" }}>
+                  <div key={`top-${item.name}-${idx}`} style={{ background: "var(--bg-card-subtle)", padding: "12px 16px", borderRadius: "8px", border: "1px solid var(--border-subtle)" }}>
                     <div style={{ fontWeight: "700", color: "var(--text-main)", fontSize: "0.9rem" }}>{item.name}</div>
                     <div style={{ display: "flex", justifyContent: "space-between", marginTop: "6px", fontSize: "0.82rem", color: "var(--text-muted)" }}>
                       <span>{item.quantity} sold</span>
@@ -418,7 +418,7 @@ export default function ReportsPage() {
                   </tr>
                 ) : (
                   productReport.top_performers.map((p, idx) => (
-                    <tr key={p.item_id || idx}>
+                    <tr key={`perf-${p.item_id || 'item'}-${p.name}-${idx}`}>
                       <td>
                         <span
                           style={{
@@ -539,7 +539,7 @@ export default function ReportsPage() {
                     </tr>
                   ) : (
                     filteredCustomerDebts.map((acc, idx) => (
-                      <tr key={acc.customer_id || idx}>
+                      <tr key={`debt-${acc.customer_id || acc.mobile_number || idx}`}>
                         <td>
                           <strong>{acc.customer_name}</strong>
                         </td>
@@ -668,7 +668,7 @@ export default function ReportsPage() {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "10px" }}>
                 {forecastData.seven_day_forecast.map((pt, idx) => (
                   <div
-                    key={idx}
+                    key={`fc-day-${pt.date || idx}`}
                     style={{
                       background: idx === 0 ? "rgba(245, 158, 11, 0.08)" : "var(--bg-card-subtle)",
                       border: idx === 0 ? "1px solid var(--chai-gold)" : "1px solid var(--border-subtle)",
@@ -702,7 +702,7 @@ export default function ReportsPage() {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "14px" }}>
                 {forecastData.raw_material_demand.map((mat, i) => (
                   <div
-                    key={i}
+                    key={`mat-${mat.material_name}-${i}`}
                     style={{
                       background: "var(--bg-card-subtle)",
                       padding: "16px",
@@ -815,7 +815,7 @@ export default function ReportsPage() {
                   </thead>
                   <tbody>
                     {monthlyReport.daily_trend.map((d, i) => (
-                      <tr key={i}>
+                      <tr key={`trend-${d.date || i}`}>
                         <td style={{ fontWeight: "600" }}>{d.date}</td>
                         <td style={{ textAlign: "right" }}>{d.order_count}</td>
                         <td style={{ textAlign: "right", fontWeight: "700", color: "var(--color-primary)" }}>
