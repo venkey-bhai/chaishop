@@ -17,6 +17,16 @@ class Settings(BaseSettings):
     FSSAI_LICENSE: str = Field(default="21524012000892")
     ADMIN_REGISTRATION_SECRET: str = Field(default="CHAIFLOW_ADMIN_SECRET_2026")
 
+    # OTP & SMS Provider Configuration
+    SMS_PROVIDER: str = Field(default="console")  # "console", "twilio", "fast2sms", "mock"
+    TWILIO_ACCOUNT_SID: str = Field(default="")
+    TWILIO_AUTH_TOKEN: str = Field(default="")
+    TWILIO_FROM_NUMBER: str = Field(default="")
+    FAST2SMS_API_KEY: str = Field(default="")
+    OTP_EXPIRE_MINUTES: int = Field(default=5)
+    OTP_MAX_ATTEMPTS: int = Field(default=5)
+    OTP_RESEND_COOLDOWN_SECONDS: int = Field(default=30)
+
     @property
     def cors_origins_list(self) -> List[str]:
         origins = [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]

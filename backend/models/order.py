@@ -22,11 +22,20 @@ class PaymentStatus(str, enum.Enum):
     FAILED = "FAILED"
 
 class OrderStatus(str, enum.Enum):
+    PENDING_OTP_VERIFICATION = "PENDING_OTP_VERIFICATION"
     PENDING = "PENDING"
     CONFIRMED = "CONFIRMED"
     PREPARING = "PREPARING"
     READY = "READY"
     COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
+    VERIFICATION_EXPIRED = "VERIFICATION_EXPIRED"
+
+class OTPChallengeStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    VERIFIED = "VERIFIED"
+    EXPIRED = "EXPIRED"
+    MAX_ATTEMPTS_EXCEEDED = "MAX_ATTEMPTS_EXCEEDED"
     CANCELLED = "CANCELLED"
 
 class Order(Base):
@@ -43,7 +52,7 @@ class Order(Base):
     total_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     payment_method: Mapped[PaymentMethod] = mapped_column(Enum(PaymentMethod, name="payment_method_enum"), nullable=False)
     payment_status: Mapped[PaymentStatus] = mapped_column(Enum(PaymentStatus, name="payment_status_enum"), default=PaymentStatus.PENDING, nullable=False)
-    order_status: Mapped[OrderStatus] = mapped_column(Enum(OrderStatus, name="order_status_enum"), default=OrderStatus.PENDING, nullable=False)
+    order_status: Mapped[OrderStatus] = mapped_column(Enum(OrderStatus, name="order_status_enum"), default=OrderStatus.PENDING_OTP_VERIFICATION, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
@@ -64,9 +73,54 @@ class Order(Base):
     items: Mapped[list["OrderItem"]] = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
     payment: Mapped["Payment"] = relationship("Payment", back_populates="order", uselist=False, cascade="all, delete-orphan")
     credit_transaction: Mapped["CreditTransaction"] = relationship("CreditTransaction", back_populates="order", uselist=False)
+    otp_challenges: Mapped[list["OrderOTPChallenge"]] = relationship(
+        "OrderOTPChallenge",
+        back_populates="order",
+        cascade="all, delete-orphan",
+        order_by="OrderOTPChallenge.created_at.desc()"
+    )
+
+    @property
+    def active_otp_challenge(self):
+        if not self.otp_challenges:
+            return None
+        return self.otp_challenges[0]
 
     def __repr__(self) -> str:
         return f"<Order #{self.daily_token_number} id={self.order_number} total={self.total_amount} status={self.order_status}>"
+
+
+class OrderOTPChallenge(Base):
+    __tablename__ = "order_otp_challenges"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    order_id: Mapped[int] = mapped_column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), index=True, nullable=False)
+    customer_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("customers.id", ondelete="SET NULL"), index=True, nullable=True)
+    
+    mobile_number: Mapped[str] = mapped_column(String(15), nullable=False)
+    otp_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    otp_salt: Mapped[str] = mapped_column(String(64), nullable=False)
+    
+    status: Mapped[str] = mapped_column(String(32), default="PENDING", index=True, nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    resend_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    cooldown_seconds: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
+    idempotency_key: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    reserved_stock: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    # Relationships
+    order: Mapped["Order"] = relationship("Order", back_populates="otp_challenges")
+    customer: Mapped["Customer"] = relationship("Customer")
+
+    def __repr__(self) -> str:
+        return f"<OrderOTPChallenge id={self.id} order_id={self.order_id} status={self.status} attempts={self.attempts}/{self.max_attempts}>"
 
 
 class OrderItem(Base):

@@ -1,5 +1,20 @@
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 let activeApiBaseUrl = API_BASE_URL;
+const DEFAULT_API_TIMEOUT_MS = 30000;
+
+function resolveApiBaseUrl() {
+  if (typeof window === "undefined") {
+    return process.env.BACKEND_INTERNAL_URL || API_BASE_URL;
+  }
+
+  // When loaded via devtunnels.ms or public hostname, route through same-origin Next.js rewrites
+  // to avoid cross-port devtunnel anti-phishing interstitial blocks and CORS preflight timeouts.
+  if (/\.devtunnels\.ms$/i.test(window.location.hostname)) {
+    return "";
+  }
+
+  return activeApiBaseUrl;
+}
 
 /**
  * Universal fetch wrapper for API communication with automatic loopback fallback
@@ -7,19 +22,56 @@ let activeApiBaseUrl = API_BASE_URL;
  */
 async function fetchFromApi(endpoint, options = {}) {
   const controller = new AbortController();
-  const timeoutMs = options.timeout || 8000;
+  const timeoutMs = options.timeout ?? DEFAULT_API_TIMEOUT_MS;
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-  const primaryUrl = `${activeApiBaseUrl}${endpoint}`;
+  const baseUrl = resolveApiBaseUrl();
+  const primaryUrl = `${baseUrl}${endpoint}`;
 
   const executeFetch = async (targetUrl) => {
+    const headers = {
+      ...(options.body !== undefined && options.body !== null
+        ? { "Content-Type": "application/json" }
+        : {}),
+      // Bypass Microsoft Dev Tunnels anti-phishing consent page on API calls
+      "X-Tunnel-Skip-Anti-Phishing-Page": "true",
+      ...(options.headers || {}),
+    };
+
+    // Sanitize and ensure valid Bearer authorization header
+    const authVal = headers["Authorization"] || headers["authorization"];
+    const isInvalidBearer =
+      !authVal ||
+      authVal === "Bearer" ||
+      authVal === "Bearer " ||
+      authVal === "Bearer undefined" ||
+      authVal === "Bearer null" ||
+      authVal.trim() === "Bearer";
+
+    if (isInvalidBearer) {
+      if (typeof window !== "undefined") {
+        try {
+          const savedToken = localStorage.getItem("chaiflow_token");
+          if (savedToken && savedToken !== "undefined" && savedToken !== "null" && savedToken.trim()) {
+            headers["Authorization"] = `Bearer ${savedToken.trim()}`;
+          } else {
+            delete headers["Authorization"];
+            delete headers["authorization"];
+          }
+        } catch {
+          delete headers["Authorization"];
+          delete headers["authorization"];
+        }
+      } else {
+        delete headers["Authorization"];
+        delete headers["authorization"];
+      }
+    }
+
     return await fetch(targetUrl, {
       ...options,
       signal: options.signal || controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        ...(options.headers || {}),
-      },
+      headers,
       cache: "no-store",
     });
   };
@@ -29,10 +81,15 @@ async function fetchFromApi(endpoint, options = {}) {
     try {
       response = await executeFetch(primaryUrl);
     } catch (networkErr) {
-      // If primary loopback failed (common on Windows due to IPv6 ::1 vs IPv4 127.0.0.1),
-      // seamlessly attempt the alternate loopback host
+      // If primary failed, attempt alternate URL
       let fallbackUrl = null;
-      if (primaryUrl.includes("localhost:8000")) {
+      if (typeof window !== "undefined" && /\.devtunnels\.ms$/i.test(window.location.hostname) && !primaryUrl.includes("-8000")) {
+        // Fallback to direct devtunnel port 8000 if same-origin rewrite failed
+        const apiHostname = window.location.hostname.replace(/-3000(?=\.)/i, "-8000");
+        if (apiHostname !== window.location.hostname) {
+          fallbackUrl = `${window.location.protocol}//${apiHostname}${endpoint}`;
+        }
+      } else if (primaryUrl.includes("localhost:8000")) {
         fallbackUrl = primaryUrl.replace("localhost:8000", "127.0.0.1:8000");
       } else if (primaryUrl.includes("127.0.0.1:8000")) {
         fallbackUrl = primaryUrl.replace("127.0.0.1:8000", "localhost:8000");
@@ -41,7 +98,6 @@ async function fetchFromApi(endpoint, options = {}) {
       if (fallbackUrl && !controller.signal.aborted) {
         try {
           response = await executeFetch(fallbackUrl);
-          // If fallback succeeded, remember the working base URL for subsequent calls
           if (fallbackUrl.includes("127.0.0.1:8000")) {
             activeApiBaseUrl = activeApiBaseUrl.replace("localhost:8000", "127.0.0.1:8000");
           } else if (fallbackUrl.includes("localhost:8000")) {
@@ -81,7 +137,9 @@ async function fetchFromApi(endpoint, options = {}) {
   } catch (error) {
     clearTimeout(timeoutId);
     if (error.name === "AbortError") {
-      const timeoutError = new Error("Backend connection timed out (server not responding). Please check the backend.");
+      const timeoutError = new Error(
+        `Backend request timed out after ${timeoutMs / 1000} seconds. Check that the backend and database are running.`
+      );
       console.warn(`API Call timed out on [${endpoint}]:`, timeoutError.message);
       throw timeoutError;
     }
@@ -611,6 +669,55 @@ export async function updateOrderPayment(orderId, { payment_status, transaction_
   });
 }
 
+/**
+ * Verify customer OTP challenge for an order
+ */
+export async function verifyOrderOtp(orderId, otp, idempotencyKey = null) {
+  const payload = { otp };
+  if (idempotencyKey) payload.idempotency_key = idempotencyKey;
+  return fetchFromApi(`/api/orders/${orderId}/verify-otp`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * Request a fresh OTP for an order (after 30-sec cooldown)
+ */
+export async function resendOrderOtp(orderId) {
+  return fetchFromApi(`/api/orders/${orderId}/resend-otp`, {
+    method: "POST",
+  });
+}
+
+/**
+ * Cancel pending order OTP verification and release temporary stock reservation
+ */
+export async function cancelOrderVerification(orderId) {
+  return fetchFromApi(`/api/orders/${orderId}/cancel-verification`, {
+    method: "POST",
+  });
+}
+
+/**
+ * Get real-time verification challenge status and cooldown countdowns
+ */
+export async function getOrderVerificationStatus(orderId) {
+  return fetchFromApi(`/api/orders/${orderId}/verification-status`);
+}
+
+/**
+ * Authorized staff/admin override to manually confirm an unverified order
+ */
+export async function adminOrderOverride(orderId, overrideReason, token) {
+  return fetchFromApi(`/api/orders/${orderId}/admin-override`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ override_reason: overrideReason }),
+  });
+}
+
+
 // -------------------------------------------------------------
 // Phase 8: Payments & Counter Billing Engine API Services
 // -------------------------------------------------------------
@@ -774,9 +881,9 @@ export async function getDashboardSummary(token) {
  */
 export async function getDailyReport(reportDate = null, token) {
   const url = reportDate ? `/api/reports/daily?report_date=${reportDate}` : "/api/reports/daily";
-  return fetchFromApi(url, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const headers = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return fetchFromApi(url, { headers });
 }
 
 /**
@@ -784,9 +891,9 @@ export async function getDailyReport(reportDate = null, token) {
  */
 export async function getDailySalesReport(reportDate = null, token) {
   const url = reportDate ? `/api/reports/daily-sales-report?report_date=${reportDate}` : "/api/reports/daily-sales-report";
-  return fetchFromApi(url, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
+  const headers = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return fetchFromApi(url, { headers });
 }
 
 /**
@@ -797,36 +904,36 @@ export async function getMonthlyReport(year = null, month = null, token) {
   if (year) params.append("year", year);
   if (month) params.append("month", month);
   const q = params.toString() ? `?${params.toString()}` : "";
-  return fetchFromApi(`/api/reports/monthly${q}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const headers = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return fetchFromApi(`/api/reports/monthly${q}`, { headers });
 }
 
 /**
  * Get product sales performance and margin ranking (Section 24)
  */
 export async function getProductReport(token) {
-  return fetchFromApi("/api/reports/products", {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const headers = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return fetchFromApi("/api/reports/products", { headers });
 }
 
 /**
  * Get credit risk ledger and exposure debt analysis (Section 19, 24)
  */
 export async function getCreditReport(token) {
-  return fetchFromApi("/api/reports/credit", {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const headers = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return fetchFromApi("/api/reports/credit", { headers });
 }
 
 /**
  * Get AI sales and raw material demand forecast (Phase 15)
  */
 export async function getSalesForecast(token) {
-  return fetchFromApi("/api/reports/forecast", {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const headers = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return fetchFromApi("/api/reports/forecast", { headers });
 }
 
 export default {
@@ -870,6 +977,11 @@ export default {
   getOrderById,
   updateOrderStatus,
   updateOrderPayment,
+  verifyOrderOtp,
+  resendOrderOtp,
+  cancelOrderVerification,
+  getOrderVerificationStatus,
+  adminOrderOverride,
   settleOrderPayment,
   recordCreditRepayment,
   getOrderUpiQr,
@@ -891,8 +1003,6 @@ export default {
   getCreditReport,
   getSalesForecast,
 };
-
-
 
 
 

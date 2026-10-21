@@ -144,7 +144,7 @@ class TestPhase7OrderPlacementAndTokens(unittest.TestCase):
         self.assertGreaterEqual(data["daily_token_number"], 1)
         self.assertTrue(data["order_number"].startswith("ORD-"))
         self.assertEqual(float(data["total_amount"]), 50.00)  # 2 x 25.00
-        self.assertEqual(data["order_status"], "PENDING")
+        self.assertEqual(data["order_status"], "PENDING_OTP_VERIFICATION")
         self.assertEqual(data["customer_name"], "Ramesh Guest")
         self.assertEqual(data["customer_phone"], "9876543210")
         self.assertIsNotNone(data["customer_id"])
@@ -152,6 +152,12 @@ class TestPhase7OrderPlacementAndTokens(unittest.TestCase):
         self.assertEqual(len(data["items"]), 1)
         self.assertEqual(data["items"][0]["item_name"], "Hyderabadi Irani Chai")
         self.assertEqual(data["items"][0]["quantity"], 2)
+
+        # Verify OTP to confirm the order
+        otp = data["otp_challenge"]["dev_otp"]
+        verify_res = self.client.post(f"/api/orders/{data['id']}/verify-otp", json={"otp": otp})
+        self.assertEqual(verify_res.status_code, 200)
+        self.assertEqual(verify_res.json()["order"]["order_status"], "CONFIRMED")
 
         TestPhase7OrderPlacementAndTokens.first_token = data["daily_token_number"]
         TestPhase7OrderPlacementAndTokens.first_order_id = data["id"]
@@ -188,6 +194,12 @@ class TestPhase7OrderPlacementAndTokens(unittest.TestCase):
         }
         res = self.client.post("/api/orders", json=payload)
         self.assertEqual(res.status_code, 201)
+        data = res.json()
+
+        # Verify OTP to permanently commit inventory deduction
+        otp = data["otp_challenge"]["dev_otp"]
+        verify_res = self.client.post(f"/api/orders/{data['id']}/verify-otp", json={"otp": otp})
+        self.assertEqual(verify_res.status_code, 200)
 
         # Fetch menu item and verify stock reduced to 7
         item_res = self.client.get(f"/api/menu/items/{self.item_tracked['id']}")
@@ -250,8 +262,14 @@ class TestPhase7OrderPlacementAndTokens(unittest.TestCase):
         self.assertEqual(res.status_code, 201, res.text)
         data = res.json()
         self.assertEqual(data["payment_method"], "CREDIT")
-        self.assertEqual(data["payment_status"], "PAID")
-        self.assertEqual(float(data["total_amount"]), 100.00)
+
+        # Verify OTP to finalize the credit transaction
+        otp = data["otp_challenge"]["dev_otp"]
+        verify_res = self.client.post(f"/api/orders/{data['id']}/verify-otp", json={"otp": otp})
+        self.assertEqual(verify_res.status_code, 200)
+        verified_data = verify_res.json()["order"]
+        self.assertEqual(verified_data["payment_status"], "PAID")
+        self.assertEqual(float(verified_data["total_amount"]), 100.00)
 
         # Verify customer credit account balance updated
         cust_res = self.client.get(f"/api/customers/{self.credit_cust_id}", headers=self.admin_headers)
@@ -409,6 +427,11 @@ class TestPhase7OrderPlacementAndTokens(unittest.TestCase):
         })
         self.assertEqual(order_res.status_code, 201)
         order_id = order_res.json()["id"]
+
+        # Verify OTP to permanently deduct stock before cancel
+        otp = order_res.json()["otp_challenge"]["dev_otp"]
+        verify_res = self.client.post(f"/api/orders/{order_id}/verify-otp", json={"otp": otp})
+        self.assertEqual(verify_res.status_code, 200)
 
         # 3. Verify stock decreased by 3
         item_after_order = self.client.get(f"/api/menu/items/{self.item_tracked['id']}").json()

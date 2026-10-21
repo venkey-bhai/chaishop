@@ -1,9 +1,17 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { getMenuCatalog, getQrInfo, createOrder, searchCustomers } from "../../services/api";
+import {
+  getMenuCatalog,
+  getQrInfo,
+  createOrder,
+  searchCustomers,
+  verifyOrderOtp,
+  resendOrderOtp,
+  cancelOrderVerification,
+} from "../../services/api";
 
 function CustomerMenuContent() {
   const searchParams = useSearchParams();
@@ -38,6 +46,30 @@ function CustomerMenuContent() {
   const [submittingOrder, setSubmittingOrder] = useState(false);
   const [orderError, setOrderError] = useState("");
   const [confirmedOrder, setConfirmedOrder] = useState(null);
+
+  // OTP Verification Modal State
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [pendingOtpOrder, setPendingOtpOrder] = useState(null);
+  const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
+  const [otpError, setOtpError] = useState("");
+  const [otpStatusMsg, setOtpStatusMsg] = useState("");
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
+  const [resendingOtp, setResendingOtp] = useState(false);
+  const [cancellingOtp, setCancellingOtp] = useState(false);
+  const [otpSecondsRemaining, setOtpSecondsRemaining] = useState(300);
+  const [otpCooldownSeconds, setOtpCooldownSeconds] = useState(30);
+  const [otpAttemptsRemaining, setOtpAttemptsRemaining] = useState(5);
+  const otpInputRefs = useRef([]);
+
+  // OTP countdown timer
+  useEffect(() => {
+    if (!showOtpModal) return;
+    const interval = setInterval(() => {
+      setOtpSecondsRemaining((prev) => (prev > 0 ? prev - 1 : 0));
+      setOtpCooldownSeconds((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [showOtpModal]);
 
   useEffect(() => {
     // 1. Resolve table number from URL or localStorage
@@ -302,18 +334,169 @@ function CustomerMenuContent() {
       };
 
       const res = await createOrder(payload);
-      setConfirmedOrder(res);
-      setShowCheckout(false);
-      setCartItems([]);
-      try { localStorage.removeItem("teashop_cart"); } catch (e) {}
-      // Refresh inventory stock immediately from database
-      await loadCatalogData();
+
+      if (res.order_status === "PENDING_OTP_VERIFICATION" && res.otp_challenge) {
+        setPendingOtpOrder(res);
+        setOtpDigits(["", "", "", "", "", ""]);
+        setOtpError("");
+        setOtpStatusMsg("");
+        setOtpSecondsRemaining(res.otp_challenge.seconds_until_expiry || 300);
+        setOtpCooldownSeconds(res.otp_challenge.seconds_until_resend || 30);
+        setOtpAttemptsRemaining(res.otp_challenge.attempts_remaining ?? 5);
+        setShowCheckout(false);
+        setShowOtpModal(true);
+        setTimeout(() => otpInputRefs.current[0]?.focus(), 250);
+      } else {
+        // Fallback for orders that were confirmed immediately
+        setConfirmedOrder(res);
+        setShowCheckout(false);
+        setCartItems([]);
+        try { localStorage.removeItem("teashop_cart"); } catch (e) {}
+        await loadCatalogData();
+      }
     } catch (err) {
       setOrderError(err.message || "Failed to place order. Please check inputs.");
     } finally {
       setSubmittingOrder(false);
     }
   }
+
+  // OTP Verification Handlers
+  function handleOtpDigitChange(index, val) {
+    const char = val.replace(/\D/g, "").slice(-1);
+    const updated = [...otpDigits];
+    updated[index] = char;
+    setOtpDigits(updated);
+    if (otpError) setOtpError("");
+
+    if (char && index < 5) {
+      otpInputRefs.current[index + 1]?.focus();
+    }
+  }
+
+  function handleOtpKeyDown(index, e) {
+    if (e.key === "Backspace" && !otpDigits[index] && index > 0) {
+      otpInputRefs.current[index - 1]?.focus();
+    } else if (e.key === "ArrowLeft" && index > 0) {
+      otpInputRefs.current[index - 1]?.focus();
+    } else if (e.key === "ArrowRight" && index < 5) {
+      otpInputRefs.current[index + 1]?.focus();
+    }
+  }
+
+  function handleOtpPaste(e) {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+    if (!pasted) return;
+    const updated = ["", "", "", "", "", ""];
+    for (let i = 0; i < pasted.length; i++) {
+      updated[i] = pasted[i];
+    }
+    setOtpDigits(updated);
+    if (pasted.length === 6) {
+      otpInputRefs.current[5]?.focus();
+    } else {
+      otpInputRefs.current[pasted.length]?.focus();
+    }
+  }
+
+  function handleQuickFillDevOtp() {
+    if (pendingOtpOrder?.otp_challenge?.dev_otp) {
+      const chars = pendingOtpOrder.otp_challenge.dev_otp.split("");
+      setOtpDigits(chars);
+      otpInputRefs.current[5]?.focus();
+    }
+  }
+
+  async function handleVerifyOtpSubmit(e) {
+    if (e) e.preventDefault();
+    const fullCode = otpDigits.join("");
+    if (fullCode.length !== 6) {
+      setOtpError("Please enter all 6 digits of the OTP code.");
+      return;
+    }
+
+    setVerifyingOtp(true);
+    setOtpError("");
+    setOtpStatusMsg("");
+    try {
+      const res = await verifyOrderOtp(pendingOtpOrder.id, fullCode);
+      if (res.success && res.order) {
+        setShowOtpModal(false);
+        setPendingOtpOrder(null);
+        setCartItems([]);
+        try { localStorage.removeItem("teashop_cart"); } catch (e) {}
+        setConfirmedOrder(res.order);
+        await loadCatalogData();
+      } else {
+        setOtpError(res.message || "Invalid OTP code.");
+        if (typeof res.attempts_remaining === "number") {
+          setOtpAttemptsRemaining(res.attempts_remaining);
+        }
+      }
+    } catch (err) {
+      setOtpError(err.message || "Failed to verify OTP. Please try again.");
+      setOtpAttemptsRemaining((prev) => (prev > 1 ? prev - 1 : 0));
+    } finally {
+      setVerifyingOtp(false);
+    }
+  }
+
+  async function handleResendOtp() {
+    if (otpCooldownSeconds > 0 || resendingOtp || !pendingOtpOrder) return;
+    setResendingOtp(true);
+    setOtpError("");
+    setOtpStatusMsg("");
+    try {
+      const res = await resendOrderOtp(pendingOtpOrder.id);
+      setOtpStatusMsg("A fresh 6-digit OTP code has been sent!");
+      setOtpCooldownSeconds(res.resend_available_after_seconds || 30);
+      setOtpSecondsRemaining(300);
+      setOtpAttemptsRemaining(5);
+      setOtpDigits(["", "", "", "", "", ""]);
+      if (res.challenge_id && pendingOtpOrder.otp_challenge) {
+        setPendingOtpOrder({
+          ...pendingOtpOrder,
+          otp_challenge: {
+            ...pendingOtpOrder.otp_challenge,
+            dev_otp: res.dev_otp || pendingOtpOrder.otp_challenge.dev_otp,
+          }
+        });
+      }
+      otpInputRefs.current[0]?.focus();
+    } catch (err) {
+      setOtpError(err.message || "Could not resend OTP. Please wait.");
+    } finally {
+      setResendingOtp(false);
+    }
+  }
+
+  async function handleCancelOtpVerification() {
+    if (!pendingOtpOrder) {
+      setShowOtpModal(false);
+      return;
+    }
+    setCancellingOtp(true);
+    try {
+      await cancelOrderVerification(pendingOtpOrder.id);
+      setShowOtpModal(false);
+      setPendingOtpOrder(null);
+      setCartToast("Order cancelled. Items returned to cart.");
+      setTimeout(() => setCartToast(""), 2500);
+      await loadCatalogData();
+    } catch (err) {
+      setOtpError(err.message || "Failed to cancel verification.");
+    } finally {
+      setCancellingOtp(false);
+    }
+  }
+
+  function formatOtpTime(totalSeconds) {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  }
+
 
   // Filter items across categories
   const filteredCatalog = catalog.map((cat) => {
@@ -1441,6 +1624,254 @@ function CustomerMenuContent() {
             >
               <span>{submittingOrder ? "Allocating Token & Placing..." : `Place Order • ₹${totalCartAmount.toFixed(2)}`}</span>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Mandatory OTP Verification Modal */}
+      {showOtpModal && pendingOtpOrder && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 85,
+          background: "rgba(0, 0, 0, 0.85)",
+          backdropFilter: "blur(10px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "16px",
+        }}>
+          <div style={{
+            background: "#161b26",
+            width: "100%",
+            maxWidth: "440px",
+            borderRadius: "20px",
+            border: "1px solid rgba(16, 185, 129, 0.35)",
+            padding: "26px 20px",
+            textAlign: "center",
+            boxShadow: "0 20px 50px rgba(0, 0, 0, 0.8)",
+            position: "relative",
+          }}>
+            <div style={{ fontSize: "2.4rem", marginBottom: "6px" }}>🔒</div>
+            <h2 style={{ fontSize: "1.3rem", fontWeight: "800", color: "#fff" }}>
+              Verify Order via SMS OTP
+            </h2>
+            <p style={{ fontSize: "0.82rem", color: "#9ca3af", marginTop: "4px", marginBottom: "16px" }}>
+              Enter the 6-digit verification code sent to{" "}
+              <strong style={{ color: "#34d399" }}>
+                {pendingOtpOrder.otp_challenge?.masked_phone || "your mobile"}
+              </strong>
+            </p>
+
+            {/* Order Brief Summary */}
+            <div style={{
+              background: "rgba(255, 255, 255, 0.05)",
+              borderRadius: "10px",
+              padding: "10px 14px",
+              marginBottom: "16px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              fontSize: "0.82rem",
+            }}>
+              <div style={{ textAlign: "left" }}>
+                <span style={{ fontWeight: "700", color: "#f3f4f6" }}>#{pendingOtpOrder.order_number}</span>
+                <span style={{ color: "#9ca3af", marginLeft: "6px" }}>({pendingOtpOrder.items?.length || 0} items)</span>
+              </div>
+              <div style={{ fontWeight: "800", color: "#10b981", fontSize: "0.95rem" }}>
+                ₹{Number(pendingOtpOrder.total_amount).toFixed(2)}
+              </div>
+            </div>
+
+            {/* Dev Mock OTP Helper Pill */}
+            {pendingOtpOrder.otp_challenge?.dev_otp && (
+              <div
+                onClick={handleQuickFillDevOtp}
+                style={{
+                  background: "rgba(245, 158, 11, 0.15)",
+                  border: "1px dashed rgba(245, 158, 11, 0.45)",
+                  borderRadius: "8px",
+                  padding: "8px 12px",
+                  color: "#fbbf24",
+                  fontSize: "0.78rem",
+                  fontWeight: "600",
+                  marginBottom: "16px",
+                  cursor: "pointer",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <span>🧪 Dev Mock OTP: <strong>{pendingOtpOrder.otp_challenge.dev_otp}</strong></span>
+                <span style={{ fontSize: "0.72rem", textDecoration: "underline" }}>Auto Fill ⚡</span>
+              </div>
+            )}
+
+            {/* Error / Status Alerts */}
+            {otpError && (
+              <div style={{
+                background: "rgba(239, 68, 68, 0.15)",
+                border: "1px solid rgba(239, 68, 68, 0.35)",
+                color: "#f87171",
+                padding: "8px 12px",
+                borderRadius: "8px",
+                fontSize: "0.8rem",
+                fontWeight: "600",
+                marginBottom: "14px",
+              }}>
+                ❌ {otpError}
+              </div>
+            )}
+
+            {otpStatusMsg && (
+              <div style={{
+                background: "rgba(16, 185, 129, 0.15)",
+                border: "1px solid rgba(16, 185, 129, 0.35)",
+                color: "#34d399",
+                padding: "8px 12px",
+                borderRadius: "8px",
+                fontSize: "0.8rem",
+                fontWeight: "600",
+                marginBottom: "14px",
+              }}>
+                ✅ {otpStatusMsg}
+              </div>
+            )}
+
+            {/* 6 Digit Inputs */}
+            <form onSubmit={handleVerifyOtpSubmit}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "6px",
+                  justifyContent: "center",
+                  marginBottom: "16px",
+                }}
+                onPaste={handleOtpPaste}
+              >
+                {otpDigits.map((digit, idx) => (
+                  <input
+                    key={idx}
+                    ref={(el) => (otpInputRefs.current[idx] = el)}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={1}
+                    value={digit}
+                    onChange={(e) => handleOtpDigitChange(idx, e.target.value)}
+                    onKeyDown={(e) => handleOtpKeyDown(idx, e)}
+                    disabled={verifyingOtp || otpSecondsRemaining <= 0}
+                    style={{
+                      width: "44px",
+                      height: "52px",
+                      fontSize: "1.4rem",
+                      fontWeight: "800",
+                      textAlign: "center",
+                      borderRadius: "10px",
+                      border: `2px solid ${digit ? "#10b981" : "rgba(255, 255, 255, 0.15)"}`,
+                      background: "rgba(255, 255, 255, 0.05)",
+                      color: "#fff",
+                      outline: "none",
+                      transition: "border-color 0.15s ease",
+                    }}
+                  />
+                ))}
+              </div>
+
+              {/* Countdown & Attempt counter */}
+              <div style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                fontSize: "0.78rem",
+                color: "#9ca3af",
+                marginBottom: "18px",
+                padding: "0 4px",
+              }}>
+                <div>
+                  {otpSecondsRemaining > 0 ? (
+                    <span>
+                      ⏱️ Expires: <strong style={{ color: otpSecondsRemaining < 60 ? "#ef4444" : "#f3f4f6" }}>{formatOtpTime(otpSecondsRemaining)}</strong>
+                    </span>
+                  ) : (
+                    <span style={{ color: "#ef4444", fontWeight: "700" }}>⚠️ Code Expired</span>
+                  )}
+                </div>
+                <div>
+                  <span style={{ color: otpAttemptsRemaining <= 2 ? "#ef4444" : "#9ca3af" }}>
+                    {otpAttemptsRemaining} attempts left
+                  </span>
+                </div>
+              </div>
+
+              {/* Confirm CTA */}
+              <button
+                type="submit"
+                disabled={verifyingOtp || otpDigits.join("").length !== 6 || otpSecondsRemaining <= 0}
+                style={{
+                  width: "100%",
+                  background: (otpDigits.join("").length === 6 && otpSecondsRemaining > 0)
+                    ? "linear-gradient(135deg, #10b981, #059669)"
+                    : "rgba(255, 255, 255, 0.1)",
+                  border: "none",
+                  color: "#fff",
+                  padding: "13px",
+                  borderRadius: "10px",
+                  fontSize: "0.95rem",
+                  fontWeight: "700",
+                  cursor: (verifyingOtp || otpDigits.join("").length !== 6 || otpSecondsRemaining <= 0) ? "not-allowed" : "pointer",
+                  boxShadow: (otpDigits.join("").length === 6 && otpSecondsRemaining > 0) ? "0 4px 16px rgba(16, 185, 129, 0.4)" : "none",
+                  marginBottom: "12px",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                {verifyingOtp ? "Verifying Code..." : "Verify & Confirm Order"}
+              </button>
+            </form>
+
+            {/* Resend Action */}
+            <div style={{ marginBottom: "14px" }}>
+              <button
+                type="button"
+                onClick={handleResendOtp}
+                disabled={otpCooldownSeconds > 0 || resendingOtp}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: otpCooldownSeconds > 0 ? "#6b7280" : "#34d399",
+                  fontWeight: "600",
+                  fontSize: "0.82rem",
+                  cursor: otpCooldownSeconds > 0 ? "not-allowed" : "pointer",
+                }}
+              >
+                {resendingOtp
+                  ? "Sending new OTP..."
+                  : otpCooldownSeconds > 0
+                  ? `Resend OTP in ${otpCooldownSeconds}s`
+                  : "Didn't receive code? Resend OTP"}
+              </button>
+            </div>
+
+            {/* Cancel & Return to Cart */}
+            <div style={{ borderTop: "1px solid rgba(255, 255, 255, 0.08)", paddingTop: "12px" }}>
+              <button
+                type="button"
+                onClick={handleCancelOtpVerification}
+                disabled={cancellingOtp}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#9ca3af",
+                  fontSize: "0.8rem",
+                  cursor: "pointer",
+                }}
+              >
+                {cancellingOtp ? "Cancelling..." : "← Cancel & Return to Cart"}
+              </button>
+            </div>
           </div>
         </div>
       )}

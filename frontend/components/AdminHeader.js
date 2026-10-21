@@ -213,6 +213,7 @@ function AdminHeaderContent({
             </div>
             <div style={{ textAlign: "left" }} className="admin-profile-text">
               <div
+                suppressHydrationWarning
                 style={{
                   fontSize: "0.82rem",
                   fontWeight: "600",
@@ -223,6 +224,7 @@ function AdminHeaderContent({
                 {currentUser?.name || "Administrator"}
               </div>
               <div
+                suppressHydrationWarning
                 style={{
                   fontSize: "0.68rem",
                   color: "var(--text-dim)",

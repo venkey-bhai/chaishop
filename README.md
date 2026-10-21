@@ -99,6 +99,14 @@ npm run dev
 ```
 Frontend web application will run at `http://localhost:3000`.
 
+### Using VS Code Dev Tunnels
+
+Run the backend on `0.0.0.0:8000` as shown above and the frontend on port `3000`.
+In VS Code's **Ports** view, forward both ports `3000` and `8000`. Open the
+frontend's Dev Tunnel URL; the browser API client automatically changes the
+loopback backend URL to the matching port-8000 Dev Tunnel URL. The backend CORS
+configuration allows Dev Tunnel origins.
+
 ---
 
 ## 📂 Project Structure

@@ -230,6 +230,11 @@ class TestPhase8PaymentsAndBilling(unittest.TestCase):
         }, headers=self.cust_headers)
         self.assertEqual(order_res.status_code, 201)
 
+        # Verify OTP to finalize credit debt
+        otp = order_res.json()["otp_challenge"]["dev_otp"]
+        verify_res = self.client.post(f"/api/orders/{order_res.json()['id']}/verify-otp", json={"otp": otp})
+        self.assertEqual(verify_res.status_code, 200)
+
         # 2. Verify customer balance is 100.00
         cust_res = self.client.get(f"/api/customers/{self.customer_id}", headers=self.admin_headers)
         self.assertEqual(float(cust_res.json()["current_balance"]), 100.00)

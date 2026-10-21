@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useAuth } from "../../../context/AuthContext";
 import {
   getCreditReport,
@@ -14,6 +14,11 @@ export default function CreditManagementPage() {
   const [loading, setLoading] = useState(true);
   const [actionMsg, setActionMsg] = useState("");
 
+  // Search & Filter state
+  const [search, setSearch] = useState("");
+  const [filterCredit, setFilterCredit] = useState("");
+  const searchTimeoutRef = useRef(null);
+
   // Record Repayment Form Modal
   const [showRepayModal, setShowRepayModal] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
@@ -22,14 +27,27 @@ export default function CreditManagementPage() {
   const [repayNotes, setRepayNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  async function loadCreditData() {
+  async function loadCreditData(searchQuery = search, creditFilter = filterCredit) {
     setLoading(true);
     setActionMsg("");
     try {
       const token = await getValidAdminToken();
+      const isEligibleParam =
+        creditFilter === "" || creditFilter === "debt" || creditFilter === "high_risk"
+          ? null
+          : creditFilter === "true";
+
       const [repRes, custRes] = await Promise.all([
         getCreditReport(token).catch(() => null),
-        getCustomers({ page: 1, limit: 100 }, token).catch(() => null),
+        getCustomers(
+          {
+            page: 1,
+            limit: 100,
+            search: searchQuery?.trim() || undefined,
+            is_credit_eligible: isEligibleParam,
+          },
+          token
+        ).catch(() => null),
       ]);
       setCreditReport(repRes);
       setCustomers(custRes?.items || []);
@@ -44,6 +62,57 @@ export default function CreditManagementPage() {
   useEffect(() => {
     loadCreditData();
   }, []);
+
+  function handleSearchChange(e) {
+    const val = e.target.value;
+    setSearch(val);
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    searchTimeoutRef.current = setTimeout(() => {
+      loadCreditData(val, filterCredit);
+    }, 300);
+  }
+
+  function handleFilterChange(e) {
+    const val = e.target.value;
+    setFilterCredit(val);
+    loadCreditData(search, val);
+  }
+
+  const displayedCustomers = useMemo(() => {
+    let list = customers;
+
+    if (filterCredit === "true") {
+      list = list.filter((c) => c.is_credit_eligible);
+    } else if (filterCredit === "false") {
+      list = list.filter((c) => !c.is_credit_eligible);
+    } else if (filterCredit === "debt") {
+      list = list.filter((c) => Number(c.current_balance) > 0);
+    } else if (filterCredit === "high_risk") {
+      list = list.filter((c) => {
+        const limit = Number(c.credit_limit) || 0;
+        const balance = Number(c.current_balance) || 0;
+        return limit > 0 && balance / limit > 0.8;
+      });
+    } else {
+      // Default: show customers who are either credit eligible OR have an existing balance
+      // Unless they searched for something, then show all matching customers
+      if (!search.trim()) {
+        list = list.filter((c) => c.is_credit_eligible || Number(c.current_balance) > 0);
+      }
+    }
+
+    if (search.trim()) {
+      const q = search.toLowerCase().trim();
+      list = list.filter((c) => {
+        const name = (c.name || "").toLowerCase();
+        const phone = (c.phone || c.mobile_number || "").toLowerCase();
+        const email = (c.email || "").toLowerCase();
+        return name.includes(q) || phone.includes(q) || email.includes(q);
+      });
+    }
+
+    return list;
+  }, [customers, filterCredit, search]);
 
   async function handleRepaySubmit(e) {
     e.preventDefault();
@@ -80,10 +149,6 @@ export default function CreditManagementPage() {
     }
   }
 
-  const creditApprovedCustomers = customers.filter(
-    (c) => c.is_credit_eligible || Number(c.current_balance) > 0
-  );
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
       {/* Header Card */}
@@ -110,7 +175,7 @@ export default function CreditManagementPage() {
           <button onClick={() => setShowRepayModal(true)} className="btn-primary" style={{ fontSize: "0.88rem", padding: "8px 16px" }}>
             + Record Repayment
           </button>
-          <button onClick={loadCreditData} disabled={loading} className="btn-secondary" style={{ fontSize: "0.88rem", padding: "8px 16px" }}>
+          <button onClick={() => loadCreditData(search, filterCredit)} disabled={loading} className="btn-secondary" style={{ fontSize: "0.88rem", padding: "8px 16px" }}>
             {loading ? "Refreshing..." : "↻ Refresh"}
           </button>
         </div>
@@ -171,14 +236,43 @@ export default function CreditManagementPage() {
         </div>
       </section>
 
+      {/* Search and Filters Toolbar */}
+      <div className="card" style={{ padding: "16px 20px" }}>
+        <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ flex: 1, minWidth: "260px" }}>
+            <input
+              type="text"
+              placeholder="Search by customer name, phone number, or email..."
+              value={search}
+              onChange={handleSearchChange}
+              style={{ width: "100%" }}
+            />
+          </div>
+
+          <div style={{ minWidth: "200px" }}>
+            <select
+              value={filterCredit}
+              onChange={handleFilterChange}
+              style={{ width: "100%" }}
+            >
+              <option value="">All Customer Types</option>
+              <option value="true">Credit Approved Only (Rule 61)</option>
+              <option value="debt">With Outstanding Debt Only</option>
+              <option value="high_risk">High Risk (&gt; 80% Limit)</option>
+              <option value="false">Prepaid / Cash Only</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
       {/* Credit Khata Customers Table */}
       <div className="card" style={{ overflow: "hidden" }}>
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border-subtle)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border-subtle)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
           <h3 style={{ fontSize: "1rem", fontWeight: "700", color: "var(--text-main)" }}>
             👥 Khata Customer Balances
           </h3>
           <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-            Rule 61 Approved & Active Credit Tabs
+            {displayedCustomers.length} {displayedCustomers.length === 1 ? "customer" : "customers"} found
           </span>
         </div>
 
@@ -202,14 +296,16 @@ export default function CreditManagementPage() {
                     Loading credit ledger...
                   </td>
                 </tr>
-              ) : creditApprovedCustomers.length === 0 ? (
+              ) : displayedCustomers.length === 0 ? (
                 <tr>
                   <td colSpan={7} style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
-                    No customer accounts currently have credit tabs.
+                    {search.trim() || filterCredit
+                      ? "No customers matched your search/filter criteria."
+                      : "No customer accounts currently have credit tabs."}
                   </td>
                 </tr>
               ) : (
-                creditApprovedCustomers.map((c) => {
+                displayedCustomers.map((c) => {
                   const balance = Number(c.current_balance) || 0;
                   const limit = Number(c.credit_limit) || 0;
                   const available = Math.max(0, limit - balance);
@@ -299,7 +395,7 @@ export default function CreditManagementPage() {
               </button>
             </div>
 
-            <form onSubmit={handleRepaySubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            <form onSubmit={handleRepaySubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
               <div>
                 <label style={{ fontSize: "0.82rem", fontWeight: "600", color: "var(--text-muted)", display: "block", marginBottom: "4px" }}>
                   Select Customer *

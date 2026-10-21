@@ -51,6 +51,7 @@ class MenuItem(Base):
     # Daily Stock / Quantity Limit Management
     track_stock: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     available_quantity: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
+    reserved_quantity: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     low_stock_threshold: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
 
     # Customization preferences (e.g. Sugar: None, Light, Medium, High; Strength: Kadak, Regular, Light)

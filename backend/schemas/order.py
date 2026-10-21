@@ -57,6 +57,7 @@ class OrderCreate(BaseModel):
     counter_number: Optional[str] = Field(default=None, max_length=20, description="Counter pickup number from QR scan")
     payment_method: PaymentMethod = Field(default=PaymentMethod.CASH, description="CASH, UPI, CARD, or CREDIT")
     notes: Optional[str] = Field(default=None, max_length=300, description="Special preparation instructions")
+    idempotency_key: Optional[str] = Field(default=None, max_length=64, description="Optional client idempotency key to prevent duplicate orders")
     items: List[OrderItemCreate] = Field(..., min_length=1, description="List of items ordered")
 
     @field_validator("customer_name")
@@ -85,12 +86,68 @@ class OrderStatusUpdate(BaseModel):
     order_status: OrderStatus = Field(..., description="Target status: CONFIRMED, PREPARING, READY, COMPLETED, CANCELLED")
 
 
+class AdminOrderOverrideRequest(BaseModel):
+    """
+    Schema for authorized staff/admin manual confirmation override of an unverified order.
+    """
+    reason: str = Field(..., min_length=3, max_length=255, description="Mandatory reason for overriding OTP verification")
+
+
 class OrderPaymentUpdate(BaseModel):
     """
     Schema for recording payment receipt for an order.
     """
     payment_status: PaymentStatus = Field(..., description="PAID, FAILED, or PENDING")
     transaction_reference: Optional[str] = Field(default=None, max_length=100, description="UPI/Card reference code")
+
+
+# -------------------------------------------------------------
+# OTP Verification Schemas
+# -------------------------------------------------------------
+
+class OTPVerificationRequest(BaseModel):
+    """
+    Payload for customer OTP verification.
+    """
+    otp: str = Field(..., min_length=6, max_length=6, description="6-digit verification OTP code", example="123456")
+    idempotency_key: Optional[str] = Field(default=None, max_length=64, description="Optional submission token to prevent duplicate confirmation")
+
+    @field_validator("otp")
+    @classmethod
+    def validate_otp(cls, v: str) -> str:
+        cleaned = "".join(ch for ch in (v or "") if ch.isdigit())
+        if len(cleaned) != 6:
+            raise ValueError("OTP must be exactly 6 digits")
+        return cleaned
+
+
+class OTPChallengeInfo(BaseModel):
+    """
+    Public challenge metadata returned to customer for verification screen.
+    Never exposes raw OTP or OTP hash!
+    """
+    challenge_id: int
+    order_id: int
+    order_number: str
+    masked_phone: str
+    status: str
+    expires_at: datetime
+    seconds_until_expiry: int
+    seconds_until_resend: int
+    attempts_remaining: int
+    max_attempts: int
+    dev_otp: Optional[str] = None  # Populated ONLY in development mode!
+
+
+class OTPVerificationResponse(BaseModel):
+    """
+    Result of OTP verification challenge attempt.
+    """
+    success: bool
+    message: str
+    verification_status: str
+    attempts_remaining: Optional[int] = None
+    order: Optional["OrderResponse"] = None
 
 
 # -------------------------------------------------------------
@@ -115,6 +172,7 @@ class OrderResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     items: List[OrderItemResponse] = []
+    otp_challenge: Optional[OTPChallengeInfo] = None
 
     model_config = ConfigDict(from_attributes=True)
 

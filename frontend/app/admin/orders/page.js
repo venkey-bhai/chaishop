@@ -5,9 +5,12 @@ import {
   getTodayTokens,
   getDailyTokenStats,
   updateOrderStatus,
+  adminOrderOverride,
 } from "../../../services/api";
 
 const STATUS_LABELS = {
+  PENDING_OTP_VERIFICATION: { label: "⏳ Awaiting OTP", color: "#D97706", bg: "#FEF3C7" },
+  VERIFICATION_EXPIRED: { label: "Expired OTP", color: "#64748B", bg: "#F1F5F9" },
   PENDING: { label: "Pending", color: "#D97706", bg: "#FEF3C7" },
   CONFIRMED: { label: "Confirmed / Queued", color: "#2563EB", bg: "#EFF6FF" },
   PREPARING: { label: "Brewing / Preparing", color: "#0284C7", bg: "#E0F2FE" },
@@ -23,6 +26,12 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [filterTab, setFilterTab] = useState("all");
   const [actionMsg, setActionMsg] = useState("");
+
+  // Admin Override Modal State
+  const [overrideModalOrder, setOverrideModalOrder] = useState(null);
+  const [overrideReason, setOverrideReason] = useState("");
+  const [overrideSubmitting, setOverrideSubmitting] = useState(false);
+  const [overrideError, setOverrideError] = useState("");
 
   async function loadOrders() {
     setLoading(true);
@@ -65,14 +74,37 @@ export default function OrdersPage() {
     }
   }
 
+  async function handleConfirmOverride() {
+    if (!overrideReason.trim() || overrideReason.trim().length < 5) {
+      setOverrideError("Please provide an audit reason (minimum 5 characters).");
+      return;
+    }
+    setOverrideSubmitting(true);
+    setOverrideError("");
+    try {
+      const token = await getValidAdminToken();
+      const res = await adminOrderOverride(overrideModalOrder.order_id, overrideReason.trim(), token);
+      setOverrideModalOrder(null);
+      setOverrideReason("");
+      setActionMsg(`Order #${res.order?.order_number || overrideModalOrder.order_number} manually confirmed via admin override!`);
+      await loadOrders();
+    } catch (err) {
+      setOverrideError(err.message || "Failed to confirm override.");
+    } finally {
+      setOverrideSubmitting(false);
+    }
+  }
+
   // Derive orders list based on selected filter tab
   const activeList = (() => {
     if (!tokensData) return [];
+    if (filterTab === "pending_otp") return tokensData.pending_otp || [];
     if (filterTab === "pending") return tokensData.pending || [];
     if (filterTab === "preparing") return tokensData.preparing || [];
     if (filterTab === "ready") return tokensData.ready || [];
     if (filterTab === "completed") return tokensData.completed || [];
     return [
+      ...(tokensData.pending_otp || []),
       ...(tokensData.pending || []),
       ...(tokensData.preparing || []),
       ...(tokensData.ready || []),
@@ -125,12 +157,21 @@ export default function OrdersPage() {
       )}
 
       {/* KPI Stats Bar */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "14px" }}>
-        <div className="card" style={{ padding: "16px", textAlign: "center" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: "14px" }}>
+        <div className="card" style={{ padding: "16px", textAlign: "center", borderTop: "3px solid #D97706" }}>
           <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: "600", textTransform: "uppercase" }}>
-            Pending Queue
+            ⏳ Awaiting OTP
           </div>
           <div style={{ fontSize: "1.6rem", fontWeight: "800", color: "#D97706" }}>
+            {tokensData?.pending_otp?.length || 0}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: "16px", textAlign: "center" }}>
+          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: "600", textTransform: "uppercase" }}>
+            Verified / Queued
+          </div>
+          <div style={{ fontSize: "1.6rem", fontWeight: "800", color: "#2563EB" }}>
             {tokensData?.pending?.length || 0}
           </div>
         </div>
@@ -167,8 +208,9 @@ export default function OrdersPage() {
       <div className="card" style={{ padding: "12px 16px" }}>
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
           {[
-            { id: "all", label: `Active Pipeline (${(tokensData?.pending?.length || 0) + (tokensData?.preparing?.length || 0) + (tokensData?.ready?.length || 0)})` },
-            { id: "pending", label: `Pending (${tokensData?.pending?.length || 0})` },
+            { id: "all", label: `Active Pipeline (${(tokensData?.pending_otp?.length || 0) + (tokensData?.pending?.length || 0) + (tokensData?.preparing?.length || 0) + (tokensData?.ready?.length || 0)})` },
+            { id: "pending_otp", label: `⏳ Awaiting OTP (${tokensData?.pending_otp?.length || 0})` },
+            { id: "pending", label: `Queued (${tokensData?.pending?.length || 0})` },
             { id: "preparing", label: `Preparing (${tokensData?.preparing?.length || 0})` },
             { id: "ready", label: `Ready (${tokensData?.ready?.length || 0})` },
             { id: "completed", label: `Completed (${tokensData?.completed?.length || 0})` },
@@ -285,6 +327,26 @@ export default function OrdersPage() {
                     )}
                   </div>
 
+                  {/* Unverified OTP Warning Notice */}
+                  {order.order_status === "PENDING_OTP_VERIFICATION" && (
+                    <div style={{
+                      background: "#FEF3C7",
+                      border: "1px dashed #D97706",
+                      borderRadius: "8px",
+                      padding: "8px 12px",
+                      color: "#92400E",
+                      fontSize: "0.78rem",
+                      fontWeight: "600",
+                      marginBottom: "10px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px"
+                    }}>
+                      <span>⏳</span>
+                      <span>Awaiting customer mobile OTP. Items temporarily reserved. Do not brew.</span>
+                    </div>
+                  )}
+
                   {/* Order Line Items */}
                   <div
                     style={{
@@ -341,7 +403,52 @@ export default function OrdersPage() {
                 </div>
 
                 {/* Workflow Status Action Buttons */}
-                <div style={{ display: "flex", gap: "8px", borderTop: "1px solid var(--border-subtle)", paddingTop: "12px" }}>
+                <div style={{ display: "flex", gap: "8px", borderTop: "1px solid var(--border-subtle)", paddingTop: "12px", alignItems: "center" }}>
+                  {order.order_status === "PENDING_OTP_VERIFICATION" && (
+                    <div style={{ display: "flex", gap: "6px", flex: 1 }}>
+                      <button
+                        disabled
+                        style={{
+                          flex: 1,
+                          background: "#F1F5F9",
+                          color: "#94A3B8",
+                          border: "1px solid #E2E8F0",
+                          borderRadius: "8px",
+                          padding: "8px 10px",
+                          fontSize: "0.8rem",
+                          fontWeight: "600",
+                          cursor: "not-allowed"
+                        }}
+                        title="Customer must verify OTP before brewing"
+                      >
+                        🔒 Awaiting OTP
+                      </button>
+                      <button
+                        onClick={() => {
+                          setOverrideModalOrder(order);
+                          setOverrideReason("");
+                          setOverrideError("");
+                        }}
+                        style={{
+                          background: "#0F766E",
+                          color: "#FFFFFF",
+                          border: "none",
+                          borderRadius: "8px",
+                          padding: "8px 12px",
+                          fontSize: "0.82rem",
+                          fontWeight: "700",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "4px"
+                        }}
+                        title="Authorized staff override"
+                      >
+                        🛡️ Override
+                      </button>
+                    </div>
+                  )}
+
                   {(order.order_status === "PENDING" || order.order_status === "CONFIRMED") && (
                     <button
                       onClick={() => handleStatusChange(order.order_id, "PREPARING", order.daily_token_number || order.token_number)}
@@ -388,7 +495,7 @@ export default function OrdersPage() {
                   {order.order_status !== "CANCELLED" && order.order_status !== "COMPLETED" && (
                     <button
                       onClick={() => {
-                        if (window.confirm(`Are you sure you want to cancel Token #${order.daily_token_number || order.token_number}?`)) {
+                        if (window.confirm(`Are you sure you want to cancel Token #${order.daily_token_number || order.token_number}? Temporary reservations will be released.`)) {
                           handleStatusChange(order.order_id, "CANCELLED", order.daily_token_number || order.token_number);
                         }
                       }}
@@ -397,7 +504,7 @@ export default function OrdersPage() {
                         border: "1px solid #FECACA",
                         color: "var(--status-err)",
                         borderRadius: "8px",
-                        padding: "8px 14px",
+                        padding: "8px 12px",
                         fontSize: "0.82rem",
                         fontWeight: "600",
                         cursor: "pointer",
@@ -410,6 +517,104 @@ export default function OrdersPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Admin Order Confirmation Override Modal */}
+      {overrideModalOrder && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(0, 0, 0, 0.6)",
+          backdropFilter: "blur(4px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 100,
+          padding: "16px"
+        }}>
+          <div className="card" style={{ maxWidth: "480px", width: "100%", padding: "26px", boxShadow: "var(--shadow-modal)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
+              <div style={{ fontSize: "1.8rem" }}>🛡️</div>
+              <div>
+                <h3 style={{ fontSize: "1.15rem", fontWeight: "800", color: "var(--text-main)" }}>
+                  Staff OTP Confirmation Override
+                </h3>
+                <p style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                  Order #{overrideModalOrder.order_number} (Token #{overrideModalOrder.daily_token_number || overrideModalOrder.token_number})
+                </p>
+              </div>
+            </div>
+
+            <div style={{ background: "var(--bg-card-subtle)", borderRadius: "8px", padding: "12px", marginBottom: "16px", fontSize: "0.85rem" }}>
+              <div style={{ color: "var(--text-main)", fontWeight: "600" }}>
+                Customer: {overrideModalOrder.customer_name} ({overrideModalOrder.customer_phone || "No phone"})
+              </div>
+              <div style={{ color: "var(--text-muted)", fontSize: "0.8rem", marginTop: "2px" }}>
+                Total: ₹{overrideModalOrder.total_amount} • {overrideModalOrder.payment_method}
+              </div>
+            </div>
+
+            <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginBottom: "10px" }}>
+              As authorized staff, you can manually confirm this order if the customer cannot receive SMS (e.g. phone died, verified in person at counter). An audit reason is mandatory:
+            </p>
+
+            <textarea
+              value={overrideReason}
+              onChange={(e) => {
+                setOverrideReason(e.target.value);
+                if (overrideError) setOverrideError("");
+              }}
+              placeholder="e.g. Customer present at counter; phone out of charge, verified order in person"
+              rows={3}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                borderRadius: "8px",
+                border: "1px solid var(--border-subtle)",
+                fontSize: "0.85rem",
+                outline: "none",
+                marginBottom: "12px",
+                fontFamily: "inherit"
+              }}
+            />
+
+            {overrideError && (
+              <div style={{ background: "#FEE2E2", border: "1px solid #FECACA", color: "var(--status-err)", padding: "8px 12px", borderRadius: "6px", fontSize: "0.8rem", fontWeight: "600", marginBottom: "12px" }}>
+                ❌ {overrideError}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setOverrideModalOrder(null)}
+                className="btn-secondary"
+                disabled={overrideSubmitting}
+                style={{ padding: "8px 16px", fontSize: "0.85rem" }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmOverride}
+                disabled={overrideSubmitting || overrideReason.trim().length < 5}
+                className="btn-primary"
+                style={{
+                  padding: "8px 18px",
+                  fontSize: "0.85rem",
+                  fontWeight: "700",
+                  opacity: overrideReason.trim().length >= 5 ? 1 : 0.6,
+                  cursor: (overrideSubmitting || overrideReason.trim().length < 5) ? "not-allowed" : "pointer"
+                }}
+              >
+                {overrideSubmitting ? "Confirming..." : "Confirm Manual Override"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

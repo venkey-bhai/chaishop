@@ -64,7 +64,7 @@ export default function DashboardPage() {
       >
         <div>
           <div style={{ fontSize: "0.85rem", opacity: 0.85, fontWeight: "500" }}>Welcome back,</div>
-          <h1 style={{ fontSize: "1.75rem", fontWeight: "800", margin: "4px 0 6px 0", letterSpacing: "-0.01em" }}>
+          <h1 suppressHydrationWarning style={{ fontSize: "1.75rem", fontWeight: "800", margin: "4px 0 6px 0", letterSpacing: "-0.01em" }}>
             {adminName}
           </h1>
           <p style={{ margin: 0, fontSize: "0.9rem", opacity: 0.9 }}>

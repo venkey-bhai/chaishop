@@ -9,9 +9,11 @@ from database.connection import engine, SessionLocal
 from database.base import Base
 from models import AdminUser, CustomerUser, Customer, User, UserRole
 from utils.security import hash_password
+from scripts.migrate_otp import migrate as run_otp_migration
 
 def setup_tables():
     print("Creating tables if they don't exist...")
+    run_otp_migration()
     Base.metadata.create_all(bind=engine)
 
     with engine.connect() as conn:

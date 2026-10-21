@@ -66,6 +66,13 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/reports", tags=["Financial Analytics & Reporting"])
 
+# Orders in these statuses must NOT be included in confirmed sales/analytics reports (Section 10 & 14)
+UNCONFIRMED_ORDER_STATUSES = [
+    OrderStatus.CANCELLED,
+    OrderStatus.PENDING_OTP_VERIFICATION,
+    OrderStatus.VERIFICATION_EXPIRED,
+]
+
 
 # =============================================================
 # 1. Executive Dashboard Summary KPIs (Section 22)
@@ -89,14 +96,14 @@ def get_dashboard_summary(
     today_sales = db.query(func.coalesce(func.sum(Order.total_amount), Decimal("0.00"))).filter(
         Order.created_at >= today_start,
         Order.created_at <= today_end,
-        Order.order_status != OrderStatus.CANCELLED
+        ~Order.order_status.in_(UNCONFIRMED_ORDER_STATUSES)
     ).scalar() or Decimal("0.00")
 
     # 2. Today's orders count
     today_orders = db.query(func.count(Order.id)).filter(
         Order.created_at >= today_start,
         Order.created_at <= today_end,
-        Order.order_status != OrderStatus.CANCELLED
+        ~Order.order_status.in_(UNCONFIRMED_ORDER_STATUSES)
     ).scalar() or 0
 
     # 3. Today's expenses
@@ -113,7 +120,7 @@ def get_dashboard_summary(
         Order.created_at >= today_start,
         Order.created_at <= today_end,
         Order.payment_method == PaymentMethod.CREDIT,
-        Order.order_status != OrderStatus.CANCELLED
+        ~Order.order_status.in_(UNCONFIRMED_ORDER_STATUSES)
     ).scalar() or Decimal("0.00")
 
     # 6. Actual cash/UPI/card inflow collected today (from settled payments)
@@ -171,9 +178,9 @@ def get_daily_report(
 
     total_orders = len(all_orders)
     completed_orders = sum(1 for o in all_orders if o.order_status == OrderStatus.COMPLETED)
-    cancelled_orders = sum(1 for o in all_orders if o.order_status == OrderStatus.CANCELLED)
+    cancelled_orders = sum(1 for o in all_orders if o.order_status in [OrderStatus.CANCELLED, OrderStatus.VERIFICATION_EXPIRED])
 
-    valid_orders = [o for o in all_orders if o.order_status != OrderStatus.CANCELLED]
+    valid_orders = [o for o in all_orders if o.order_status not in UNCONFIRMED_ORDER_STATUSES]
     total_sales = sum((o.total_amount for o in valid_orders), Decimal("0.00"))
     aov = (total_sales / Decimal(len(valid_orders))) if len(valid_orders) > 0 else Decimal("0.00")
 
@@ -226,7 +233,7 @@ def get_daily_report(
     ).join(Order, Order.id == OrderItem.order_id).filter(
         Order.created_at >= day_start,
         Order.created_at <= day_end,
-        Order.order_status != OrderStatus.CANCELLED
+        ~Order.order_status.in_(UNCONFIRMED_ORDER_STATUSES)
     ).group_by(OrderItem.item_name).order_by(desc("qty")).limit(5).all()
 
     top_items = [
@@ -283,13 +290,13 @@ def get_monthly_report(
     monthly_sales = db.query(func.coalesce(func.sum(Order.total_amount), Decimal("0.00"))).filter(
         Order.created_at >= month_start,
         Order.created_at <= month_end,
-        Order.order_status != OrderStatus.CANCELLED
+        ~Order.order_status.in_(UNCONFIRMED_ORDER_STATUSES)
     ).scalar() or Decimal("0.00")
 
     total_orders = db.query(func.count(Order.id)).filter(
         Order.created_at >= month_start,
         Order.created_at <= month_end,
-        Order.order_status != OrderStatus.CANCELLED
+        ~Order.order_status.in_(UNCONFIRMED_ORDER_STATUSES)
     ).scalar() or 0
 
     # 2. Monthly expenses
@@ -314,13 +321,13 @@ def get_monthly_report(
         day_sales = db.query(func.coalesce(func.sum(Order.total_amount), Decimal("0.00"))).filter(
             Order.created_at >= d_start,
             Order.created_at <= d_end,
-            Order.order_status != OrderStatus.CANCELLED
+            ~Order.order_status.in_(UNCONFIRMED_ORDER_STATUSES)
         ).scalar() or Decimal("0.00")
 
         day_orders = db.query(func.count(Order.id)).filter(
             Order.created_at >= d_start,
             Order.created_at <= d_end,
-            Order.order_status != OrderStatus.CANCELLED
+            ~Order.order_status.in_(UNCONFIRMED_ORDER_STATUSES)
         ).scalar() or 0
 
         day_exp = db.query(func.coalesce(func.sum(Expense.amount), Decimal("0.00"))).filter(
@@ -343,7 +350,7 @@ def get_monthly_report(
     ).filter(
         Order.created_at >= month_start,
         Order.created_at <= month_end,
-        Order.order_status != OrderStatus.CANCELLED
+        ~Order.order_status.in_(UNCONFIRMED_ORDER_STATUSES)
     ).group_by(Order.payment_method).all()
 
     payment_methods = {
@@ -386,7 +393,7 @@ def get_product_report(
         func.sum(OrderItem.total_price).label("total_rev"),
         func.avg(OrderItem.unit_price).label("avg_price")
     ).join(Order, Order.id == OrderItem.order_id).filter(
-        Order.order_status != OrderStatus.CANCELLED
+        ~Order.order_status.in_(UNCONFIRMED_ORDER_STATUSES)
     ).group_by(
         OrderItem.menu_item_id,
         OrderItem.item_name
@@ -517,7 +524,7 @@ def get_sales_forecast(
         day_total = db.query(func.coalesce(func.sum(Order.total_amount), Decimal("0.00"))).filter(
             Order.created_at >= cur_start,
             Order.created_at <= cur_end,
-            Order.order_status != OrderStatus.CANCELLED
+            ~Order.order_status.in_(UNCONFIRMED_ORDER_STATUSES)
         ).scalar() or Decimal("0.00")
 
         daily_sales_series.append(float(day_total))
@@ -665,8 +672,8 @@ def get_daily_sales_report(
         cast(Order.created_at, Date) == target_date
     ).order_by(Order.daily_token_number.asc()).all()
 
-    valid_orders = [o for o in orders if o.order_status != OrderStatus.CANCELLED]
-    cancelled_orders = [o for o in orders if o.order_status == OrderStatus.CANCELLED]
+    valid_orders = [o for o in orders if o.order_status not in UNCONFIRMED_ORDER_STATUSES]
+    cancelled_orders = [o for o in orders if o.order_status in [OrderStatus.CANCELLED, OrderStatus.VERIFICATION_EXPIRED]]
 
     total_sales = sum((o.total_amount for o in valid_orders), Decimal("0.00"))
 

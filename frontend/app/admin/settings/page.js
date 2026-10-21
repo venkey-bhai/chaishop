@@ -103,21 +103,21 @@ export default function SettingsPage() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
           <div style={{ background: "var(--bg-card-subtle)", padding: "14px", borderRadius: "10px", border: "1px solid var(--border-subtle)" }}>
             <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase" }}>Admin Name</div>
-            <div style={{ fontSize: "1.1rem", fontWeight: "700", color: "var(--text-main)", marginTop: "2px" }}>
+            <div suppressHydrationWarning style={{ fontSize: "1.1rem", fontWeight: "700", color: "var(--text-main)", marginTop: "2px" }}>
               {currentUser?.name || "Super Administrator"}
             </div>
           </div>
 
           <div style={{ background: "var(--bg-card-subtle)", padding: "14px", borderRadius: "10px", border: "1px solid var(--border-subtle)" }}>
             <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase" }}>Registered Phone</div>
-            <div style={{ fontSize: "1.1rem", fontWeight: "700", fontFamily: "monospace", color: "var(--text-main)", marginTop: "2px" }}>
+            <div suppressHydrationWarning style={{ fontSize: "1.1rem", fontWeight: "700", fontFamily: "monospace", color: "var(--text-main)", marginTop: "2px" }}>
               {currentUser?.mobile_number || "9999999999"}
             </div>
           </div>
 
           <div style={{ background: "var(--bg-card-subtle)", padding: "14px", borderRadius: "10px", border: "1px solid var(--border-subtle)" }}>
             <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase" }}>Role Authorization</div>
-            <div style={{ fontSize: "1.1rem", fontWeight: "700", color: "var(--color-primary)", marginTop: "2px" }}>
+            <div suppressHydrationWarning style={{ fontSize: "1.1rem", fontWeight: "700", color: "var(--color-primary)", marginTop: "2px" }}>
               {currentUser?.role || "ADMIN"}
             </div>
           </div>

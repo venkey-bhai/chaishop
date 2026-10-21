@@ -391,16 +391,28 @@ export default function DailySalesReportPage() {
       {error && (
         <div
           style={{
-            padding: "12px 16px",
-            borderRadius: "8px",
+            padding: "14px 18px",
+            borderRadius: "10px",
             background: "#FEF2F2",
             border: "1px solid #FECACA",
             color: "var(--status-err)",
             fontSize: "0.88rem",
             fontWeight: "600",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "10px",
           }}
         >
-          {error}
+          <span>{error}</span>
+          <button
+            onClick={() => fetchReport(selectedDate)}
+            className="btn-secondary"
+            style={{ fontSize: "0.8rem", padding: "5px 12px", background: "#FFFFFF", fontWeight: "600" }}
+          >
+            ↻ Try Again
+          </button>
         </div>
       )}
 
