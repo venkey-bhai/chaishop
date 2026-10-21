@@ -28,6 +28,14 @@ class Settings(BaseSettings):
     OTP_RESEND_COOLDOWN_SECONDS: int = Field(default=30)
 
     @property
+    def normalized_database_url(self) -> str:
+        # System environment variable from cloud provider (Render/Railway) must override .env
+        url = os.environ.get("DATABASE_URL") or self.DATABASE_URL
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql://", 1)
+        return url
+
+    @property
     def cors_origins_list(self) -> List[str]:
         origins = [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
         for origin in ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001"]:

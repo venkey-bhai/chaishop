@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 # Create SQLAlchemy engine with pool_pre_ping to check connection health
 engine = create_engine(
-    settings.DATABASE_URL,
+    settings.normalized_database_url,
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,

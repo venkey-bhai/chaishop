@@ -17,8 +17,8 @@ from backend.config import settings
 # Alembic Config object
 config = context.config
 
-# Dynamically set database connection URL from .env settings
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+# Dynamically set database connection URL from settings
+config.set_main_option("sqlalchemy.url", settings.normalized_database_url)
 
 # Setup logging from alembic.ini if available
 if config.config_file_name is not None:
