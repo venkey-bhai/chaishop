@@ -25,6 +25,7 @@ export default function OrdersPage() {
   const [tokenStats, setTokenStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [filterTab, setFilterTab] = useState("all");
+  const [dateScope, setDateScope] = useState("all"); // "all" | "today" | "backlog"
   const [actionMsg, setActionMsg] = useState("");
 
   // Admin Override Modal State
@@ -95,20 +96,31 @@ export default function OrdersPage() {
     }
   }
 
-  // Derive orders list based on selected filter tab
+  // Derive orders list based on selected filter tab and date scope
   const activeList = (() => {
     if (!tokensData) return [];
-    if (filterTab === "pending_otp") return tokensData.pending_otp || [];
-    if (filterTab === "pending") return tokensData.pending || [];
-    if (filterTab === "preparing") return tokensData.preparing || [];
-    if (filterTab === "ready") return tokensData.ready || [];
-    if (filterTab === "completed") return tokensData.completed || [];
-    return [
-      ...(tokensData.pending_otp || []),
-      ...(tokensData.pending || []),
-      ...(tokensData.preparing || []),
-      ...(tokensData.ready || []),
-    ];
+    let list = [];
+    if (filterTab === "pending_otp") list = tokensData.pending_otp || [];
+    else if (filterTab === "pending") list = tokensData.pending || [];
+    else if (filterTab === "preparing") list = tokensData.preparing || [];
+    else if (filterTab === "ready") list = tokensData.ready || [];
+    else if (filterTab === "completed") list = tokensData.completed || [];
+    else {
+      list = [
+        ...(tokensData.pending_otp || []),
+        ...(tokensData.pending || []),
+        ...(tokensData.preparing || []),
+        ...(tokensData.ready || []),
+      ];
+    }
+
+    if (dateScope === "today") {
+      return list.filter((o) => o.is_today || !o.is_previous_day);
+    }
+    if (dateScope === "backlog") {
+      return list.filter((o) => o.is_previous_day);
+    }
+    return list;
   })();
 
   return (
@@ -157,7 +169,7 @@ export default function OrdersPage() {
       )}
 
       {/* KPI Stats Bar */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: "14px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "14px" }}>
         <div className="card" style={{ padding: "16px", textAlign: "center", borderTop: "3px solid #D97706" }}>
           <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: "600", textTransform: "uppercase" }}>
             ⏳ Awaiting OTP
@@ -167,16 +179,16 @@ export default function OrdersPage() {
           </div>
         </div>
 
-        <div className="card" style={{ padding: "16px", textAlign: "center" }}>
+        <div className="card" style={{ padding: "16px", textAlign: "center", borderTop: "3px solid #2563EB" }}>
           <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: "600", textTransform: "uppercase" }}>
-            Verified / Queued
+            Queued
           </div>
           <div style={{ fontSize: "1.6rem", fontWeight: "800", color: "#2563EB" }}>
             {tokensData?.pending?.length || 0}
           </div>
         </div>
 
-        <div className="card" style={{ padding: "16px", textAlign: "center" }}>
+        <div className="card" style={{ padding: "16px", textAlign: "center", borderTop: "3px solid #0284C7" }}>
           <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: "600", textTransform: "uppercase" }}>
             Brewing / Preparing
           </div>
@@ -185,7 +197,7 @@ export default function OrdersPage() {
           </div>
         </div>
 
-        <div className="card" style={{ padding: "16px", textAlign: "center" }}>
+        <div className="card" style={{ padding: "16px", textAlign: "center", borderTop: "3px solid var(--status-success)" }}>
           <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: "600", textTransform: "uppercase" }}>
             Ready for Pickup
           </div>
@@ -194,45 +206,162 @@ export default function OrdersPage() {
           </div>
         </div>
 
-        <div className="card" style={{ padding: "16px", textAlign: "center" }}>
+        <div className="card" style={{ padding: "16px", textAlign: "center", borderTop: "3px solid #64748B" }}>
           <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: "600", textTransform: "uppercase" }}>
-            Total Orders Today
+            Today's Orders
           </div>
           <div style={{ fontSize: "1.6rem", fontWeight: "800", color: "var(--text-main)" }}>
-            {tokenStats?.total_orders || tokensData?.total_orders_today || 0}
+            {tokensData?.total_orders_today || tokenStats?.total_orders || 0}
+          </div>
+        </div>
+
+        <div
+          className="card"
+          style={{
+            padding: "16px",
+            textAlign: "center",
+            borderTop: (tokensData?.previous_days_active_count || 0) > 0 ? "3px solid #DC2626" : "3px solid #E2E8F0",
+            background: (tokensData?.previous_days_active_count || 0) > 0 ? "#FEF2F2" : "#FFFFFF",
+            cursor: (tokensData?.previous_days_active_count || 0) > 0 ? "pointer" : "default",
+          }}
+          onClick={() => {
+            if ((tokensData?.previous_days_active_count || 0) > 0) {
+              setDateScope(dateScope === "backlog" ? "all" : "backlog");
+            }
+          }}
+          title="Unfulfilled orders from previous dates still in queue"
+        >
+          <div style={{ fontSize: "0.75rem", color: (tokensData?.previous_days_active_count || 0) > 0 ? "#DC2626" : "var(--text-muted)", fontWeight: "700", textTransform: "uppercase" }}>
+            🗓️ Carried Over
+          </div>
+          <div style={{ fontSize: "1.6rem", fontWeight: "800", color: (tokensData?.previous_days_active_count || 0) > 0 ? "#DC2626" : "var(--text-muted)" }}>
+            {tokensData?.previous_days_active_count || 0}
           </div>
         </div>
       </div>
 
-      {/* Filter Tabs */}
-      <div className="card" style={{ padding: "12px 16px" }}>
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-          {[
-            { id: "all", label: `Active Pipeline (${(tokensData?.pending_otp?.length || 0) + (tokensData?.pending?.length || 0) + (tokensData?.preparing?.length || 0) + (tokensData?.ready?.length || 0)})` },
-            { id: "pending_otp", label: `⏳ Awaiting OTP (${tokensData?.pending_otp?.length || 0})` },
-            { id: "pending", label: `Queued (${tokensData?.pending?.length || 0})` },
-            { id: "preparing", label: `Preparing (${tokensData?.preparing?.length || 0})` },
-            { id: "ready", label: `Ready (${tokensData?.ready?.length || 0})` },
-            { id: "completed", label: `Completed (${tokensData?.completed?.length || 0})` },
-          ].map((tab) => (
+      {/* Alert banner for previous days active orders */}
+      {(tokensData?.previous_days_active_count || 0) > 0 && (
+        <div
+          style={{
+            padding: "14px 20px",
+            borderRadius: "10px",
+            background: "#FFFBEB",
+            border: "1px solid #FDE68A",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "12px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <span style={{ fontSize: "1.4rem" }}>⚠️</span>
+            <div>
+              <div style={{ fontSize: "0.92rem", fontWeight: "700", color: "#92400E" }}>
+                {tokensData.previous_days_active_count} Active Order{tokensData.previous_days_active_count > 1 ? "s" : ""} Carried Over From Previous Dates
+              </div>
+              <div style={{ fontSize: "0.8rem", color: "#B45309", marginTop: "2px" }}>
+                Showing unfulfilled pending/preparing orders placed before today. They remain live in the kitchen pipeline until fulfilled or cancelled.
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: "8px" }}>
             <button
-              key={tab.id}
-              onClick={() => setFilterTab(tab.id)}
+              onClick={() => setDateScope(dateScope === "backlog" ? "all" : "backlog")}
               style={{
-                padding: "8px 16px",
-                borderRadius: "8px",
-                border: `1px solid ${filterTab === tab.id ? "var(--color-primary)" : "var(--border-subtle)"}`,
-                background: filterTab === tab.id ? "var(--color-primary)" : "#FFFFFF",
-                color: filterTab === tab.id ? "#FFFFFF" : "var(--text-main)",
-                fontSize: "0.85rem",
-                fontWeight: "600",
+                padding: "6px 14px",
+                borderRadius: "6px",
+                border: "1px solid #D97706",
+                background: dateScope === "backlog" ? "#D97706" : "#FFFFFF",
+                color: dateScope === "backlog" ? "#FFFFFF" : "#92400E",
+                fontSize: "0.82rem",
+                fontWeight: "700",
                 cursor: "pointer",
-                transition: "all 0.15s ease",
               }}
             >
-              {tab.label}
+              {dateScope === "backlog" ? "✓ Showing Backlog Only" : `Filter Backlog (${tokensData.previous_days_active_count})`}
             </button>
-          ))}
+            {dateScope !== "all" && (
+              <button
+                onClick={() => setDateScope("all")}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: "6px",
+                  border: "1px solid #CBD5E1",
+                  background: "#FFFFFF",
+                  color: "#475569",
+                  fontSize: "0.82rem",
+                  fontWeight: "600",
+                  cursor: "pointer",
+                }}
+              >
+                Show All
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Filter Tabs & Scope Filter */}
+      <div className="card" style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: "12px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            {[
+              { id: "all", label: `Active Pipeline (${(tokensData?.pending_otp?.length || 0) + (tokensData?.pending?.length || 0) + (tokensData?.preparing?.length || 0) + (tokensData?.ready?.length || 0)})` },
+              { id: "pending_otp", label: `⏳ Awaiting OTP (${tokensData?.pending_otp?.length || 0})` },
+              { id: "pending", label: `Queued (${tokensData?.pending?.length || 0})` },
+              { id: "preparing", label: `Preparing (${tokensData?.preparing?.length || 0})` },
+              { id: "ready", label: `Ready (${tokensData?.ready?.length || 0})` },
+              { id: "completed", label: `Completed (${tokensData?.completed?.length || 0})` },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setFilterTab(tab.id)}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: "8px",
+                  border: `1px solid ${filterTab === tab.id ? "var(--color-primary)" : "var(--border-subtle)"}`,
+                  background: filterTab === tab.id ? "var(--color-primary)" : "#FFFFFF",
+                  color: filterTab === tab.id ? "#FFFFFF" : "var(--text-main)",
+                  fontSize: "0.84rem",
+                  fontWeight: "600",
+                  cursor: "pointer",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Date Scope Filter */}
+          <div style={{ display: "flex", alignItems: "center", gap: "4px", background: "var(--bg-card-subtle)", padding: "4px", borderRadius: "8px" }}>
+            <span style={{ fontSize: "0.76rem", color: "var(--text-muted)", fontWeight: "600", padding: "0 6px" }}>Scope:</span>
+            {[
+              { id: "all", label: "All Active" },
+              { id: "today", label: "Today Only" },
+              { id: "backlog", label: `Backlog (${tokensData?.previous_days_active_count || 0})` },
+            ].map((scope) => (
+              <button
+                key={scope.id}
+                onClick={() => setDateScope(scope.id)}
+                style={{
+                  padding: "5px 10px",
+                  borderRadius: "6px",
+                  border: "none",
+                  background: dateScope === scope.id ? "#FFFFFF" : "transparent",
+                  color: dateScope === scope.id ? "var(--color-primary)" : "var(--text-muted)",
+                  fontWeight: dateScope === scope.id ? "700" : "500",
+                  fontSize: "0.78rem",
+                  boxShadow: dateScope === scope.id ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                  cursor: "pointer",
+                }}
+              >
+                {scope.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -268,26 +397,68 @@ export default function OrdersPage() {
                 }}
               >
                 <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px", gap: "8px" }}>
                     <div>
-                      <span
-                        style={{
-                          fontSize: "1.2rem",
-                          fontWeight: "800",
-                          color: "var(--text-main)",
-                          background: "var(--bg-card-subtle)",
-                          padding: "2px 8px",
-                          borderRadius: "6px",
-                          marginRight: "8px",
-                        }}
-                      >
-                        #{order.daily_token_number || order.token_number}
-                      </span>
-                      <span style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
-                        {order.order_time || order.created_at
-                          ? new Date(order.order_time || order.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-                          : "Just now"}
-                      </span>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", marginBottom: "4px" }}>
+                        <span
+                          style={{
+                            fontSize: "1.25rem",
+                            fontWeight: "800",
+                            color: "var(--text-main)",
+                            background: "var(--bg-card-subtle)",
+                            padding: "2px 8px",
+                            borderRadius: "6px",
+                          }}
+                        >
+                          #{order.daily_token_number || order.token_number}
+                        </span>
+                        {order.is_previous_day ? (
+                          <span
+                            style={{
+                              fontSize: "0.72rem",
+                              fontWeight: "700",
+                              background: "#FEE2E2",
+                              color: "#DC2626",
+                              border: "1px solid #FECACA",
+                              padding: "2px 8px",
+                              borderRadius: "10px",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "3px",
+                            }}
+                            title={`Order placed on ${order.order_date || order.created_at}`}
+                          >
+                            ⚠️ {order.date_label || "Previous Date"}
+                          </span>
+                        ) : (
+                          <span
+                            style={{
+                              fontSize: "0.72rem",
+                              fontWeight: "600",
+                              background: "#F1F5F9",
+                              color: "#475569",
+                              padding: "2px 8px",
+                              borderRadius: "10px",
+                            }}
+                          >
+                            Today
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
+                        <span style={{ fontWeight: "600", color: "var(--text-main)" }}>{order.order_number}</span>
+                        <span>•</span>
+                        <span>
+                          {order.order_time || order.created_at
+                            ? new Date(order.order_time || order.created_at).toLocaleString([], {
+                                month: "short",
+                                day: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })
+                            : "Just now"}
+                        </span>
+                      </div>
                     </div>
 
                     <span
@@ -299,6 +470,7 @@ export default function OrdersPage() {
                         background: stInfo.bg,
                         color: stInfo.color,
                         textTransform: "uppercase",
+                        whiteSpace: "nowrap",
                       }}
                     >
                       {stInfo.label}

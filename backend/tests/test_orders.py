@@ -460,7 +460,33 @@ class TestPhase7OrderPlacementAndTokens(unittest.TestCase):
         item_after_second_cancel = self.client.get(f"/api/menu/items/{self.item_tracked['id']}").json()
         self.assertEqual(item_after_second_cancel["available_quantity"], initial_stock)
 
+    def test_16_tokens_include_previous_days_active_orders(self):
+        """Tokens endpoint returns unfulfilled orders from previous days with date labels."""
+        res = self.client.get("/api/orders/tokens/today")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertIn("previous_days_active_count", data)
+        self.assertIn("total_active_pipeline", data)
+        self.assertIn("view_date", data)
+
+        # Check token fields in pending/preparing/ready
+        all_active = data["pending_otp"] + data["pending"] + data["preparing"] + data["ready"]
+        for token in all_active:
+            self.assertIn("order_date", token)
+            self.assertIn("is_today", token)
+            self.assertIn("is_previous_day", token)
+            self.assertIn("date_label", token)
+
+        # Verify include_all_active=false query param
+        res_today_only = self.client.get("/api/orders/tokens/today?include_all_active=false")
+        self.assertEqual(res_today_only.status_code, 200)
+        data_today_only = res_today_only.json()
+        all_today_only = data_today_only["pending_otp"] + data_today_only["pending"] + data_today_only["preparing"] + data_today_only["ready"]
+        for token in all_today_only:
+            self.assertTrue(token["is_today"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
 

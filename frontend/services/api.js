@@ -607,10 +607,17 @@ export async function createOrder(orderData, token = null) {
 }
 
 /**
- * Fetch live queue of today's daily tokens for display and KDS
+ * Fetch live queue of daily tokens for display and KDS (including previous active unfulfilled tokens)
+ * @param {Object} params - { target_date?: string, include_all_active?: boolean }
  */
-export async function getTodayTokens() {
-  return fetchFromApi("/api/orders/tokens/today");
+export async function getTodayTokens(params = {}) {
+  const query = new URLSearchParams();
+  if (params && params.target_date) query.append("target_date", params.target_date);
+  if (params && params.include_all_active !== undefined) {
+    query.append("include_all_active", params.include_all_active ? "true" : "false");
+  }
+  const qs = query.toString();
+  return fetchFromApi(`/api/orders/tokens/today${qs ? `?${qs}` : ""}`);
 }
 
 /**

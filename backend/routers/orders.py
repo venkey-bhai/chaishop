@@ -4,7 +4,7 @@ from datetime import datetime, timezone, time, date, timedelta
 from decimal import Decimal
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Header, status
-from sqlalchemy import or_, func, desc
+from sqlalchemy import or_, and_, func, desc
 from sqlalchemy.orm import Session, joinedload
 
 try:
@@ -962,19 +962,46 @@ def get_order_verification_status(
 @router.get(
     "/tokens/today",
     summary="Get Today's Live Token Queue (Public / KDS)",
-    description="Returns active daily tokens grouped by status for kitchen display and pickup calling screens."
+    description="Returns active daily tokens grouped by status for kitchen display and pickup calling screens. Includes unfulfilled orders from previous dates."
 )
-def get_today_tokens(db: Session = Depends(get_db)):
+def get_today_tokens(
+    target_date: Optional[date] = Query(None, description="Optional target date to filter tokens for (defaults to today)"),
+    include_all_active: bool = Query(True, description="Whether to include unfulfilled orders (pending/preparing/ready) from previous dates"),
+    db: Session = Depends(get_db)
+):
     cleanup_expired_otp_challenges(db)
     now_utc = datetime.now(timezone.utc)
     today_date = now_utc.date()
-    start_of_day = datetime.combine(today_date, time.min).replace(tzinfo=timezone.utc)
-    end_of_day = datetime.combine(today_date, time.max).replace(tzinfo=timezone.utc)
 
-    orders = db.query(Order).options(joinedload(Order.items), joinedload(Order.otp_challenges)).filter(
-        Order.created_at >= start_of_day,
-        Order.created_at <= end_of_day
-    ).order_by(Order.daily_token_number.desc()).all()
+    if not isinstance(target_date, date):
+        target_date = None
+    if not isinstance(include_all_active, bool):
+        include_all_active = True
+
+    view_date = target_date or today_date
+    start_of_day = datetime.combine(view_date, time.min).replace(tzinfo=timezone.utc)
+    end_of_day = datetime.combine(view_date, time.max).replace(tzinfo=timezone.utc)
+
+    active_statuses = [
+        OrderStatus.PENDING_OTP_VERIFICATION,
+        OrderStatus.PENDING,
+        OrderStatus.CONFIRMED,
+        OrderStatus.PREPARING,
+        OrderStatus.READY
+    ]
+
+    if include_all_active:
+        filter_clause = or_(
+            Order.order_status.in_(active_statuses),
+            and_(Order.created_at >= start_of_day, Order.created_at <= end_of_day)
+        )
+    else:
+        filter_clause = and_(Order.created_at >= start_of_day, Order.created_at <= end_of_day)
+
+    orders = db.query(Order).options(
+        joinedload(Order.items),
+        joinedload(Order.otp_challenges)
+    ).filter(filter_clause).order_by(Order.created_at.desc()).all()
 
     pending_otp = []
     pending = []
@@ -1009,6 +1036,17 @@ def get_today_tokens(db: Session = Depends(get_db)):
                 "strength_option": strength,
             })
 
+        order_created = o.created_at.replace(tzinfo=timezone.utc) if o.created_at.tzinfo is None else o.created_at.astimezone(timezone.utc)
+        order_date = order_created.date()
+        is_today = (order_date == today_date)
+        is_previous_day = (order_date < today_date)
+        days_ago = (today_date - order_date).days if is_previous_day else 0
+        date_label = (
+            "Today" if is_today
+            else "Yesterday" if days_ago == 1
+            else f"{order_date.strftime('%d %b %Y')} ({days_ago} days ago)"
+        )
+
         token_info = {
             "order_id": o.id,
             "order_number": o.order_number,
@@ -1032,6 +1070,11 @@ def get_today_tokens(db: Session = Depends(get_db)):
             ),
             "created_at": o.created_at.isoformat(),
             "order_time": o.created_at.isoformat(),
+            "order_date": order_date.isoformat(),
+            "is_today": is_today,
+            "is_previous_day": is_previous_day,
+            "days_ago": days_ago,
+            "date_label": date_label,
         }
         if o.order_status == OrderStatus.PENDING_OTP_VERIFICATION:
             pending_otp.append(token_info)
@@ -1044,15 +1087,21 @@ def get_today_tokens(db: Session = Depends(get_db)):
         elif o.order_status == OrderStatus.COMPLETED:
             completed.append(token_info)
 
+    today_orders = [o for o in orders if o.created_at >= start_of_day and o.created_at <= end_of_day]
+    prev_orders_active = [o for o in orders if o.created_at < start_of_day and o.order_status in active_statuses]
+
     return {
         "today": today_date.isoformat(),
-        "total_orders_today": len([o for o in orders if o.order_status not in [OrderStatus.CANCELLED, OrderStatus.VERIFICATION_EXPIRED]]),
-        "latest_token": orders[0].daily_token_number if orders else 0,
+        "view_date": view_date.isoformat(),
+        "total_orders_today": len([o for o in today_orders if o.order_status not in [OrderStatus.CANCELLED, OrderStatus.VERIFICATION_EXPIRED]]),
+        "total_active_pipeline": len(pending_otp) + len(pending) + len(preparing) + len(ready),
+        "previous_days_active_count": len(prev_orders_active),
+        "latest_token": max([o.daily_token_number for o in today_orders], default=0),
         "pending_otp": pending_otp,
         "pending": pending,
         "preparing": preparing,
         "ready": ready,
-        "completed": completed[:10],  # Last 10 completed for history
+        "completed": completed[:20],  # Last 20 completed for history
     }
 
 
@@ -1069,20 +1118,31 @@ def get_daily_token_stats(db: Session = Depends(get_db)):
     start_of_day = datetime.combine(today_date, time.min).replace(tzinfo=timezone.utc)
     end_of_day = datetime.combine(today_date, time.max).replace(tzinfo=timezone.utc)
 
+    active_statuses = [
+        OrderStatus.PENDING_OTP_VERIFICATION,
+        OrderStatus.PENDING,
+        OrderStatus.CONFIRMED,
+        OrderStatus.PREPARING,
+        OrderStatus.READY
+    ]
+
     orders = db.query(Order).filter(
-        Order.created_at >= start_of_day,
-        Order.created_at <= end_of_day
+        or_(
+            Order.order_status.in_(active_statuses),
+            and_(Order.created_at >= start_of_day, Order.created_at <= end_of_day)
+        )
     ).all()
 
-    latest_token = max([o.daily_token_number for o in orders], default=0)
+    today_orders = [o for o in orders if o.created_at >= start_of_day and o.created_at <= end_of_day]
+    latest_token = max([o.daily_token_number for o in today_orders], default=0)
     pending_count = sum(1 for o in orders if o.order_status in [OrderStatus.PENDING, OrderStatus.CONFIRMED])
     preparing_count = sum(1 for o in orders if o.order_status == OrderStatus.PREPARING)
     ready_count = sum(1 for o in orders if o.order_status == OrderStatus.READY)
-    completed_count = sum(1 for o in orders if o.order_status == OrderStatus.COMPLETED)
+    completed_count = sum(1 for o in today_orders if o.order_status == OrderStatus.COMPLETED)
 
     return DailyTokenStats(
         today_date=today_date.isoformat(),
-        total_orders=len([o for o in orders if o.order_status not in [OrderStatus.CANCELLED, OrderStatus.VERIFICATION_EXPIRED]]),
+        total_orders=len([o for o in today_orders if o.order_status not in [OrderStatus.CANCELLED, OrderStatus.VERIFICATION_EXPIRED]]),
         latest_token=latest_token,
         active_pending_count=pending_count,
         active_preparing_count=preparing_count,
