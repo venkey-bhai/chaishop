@@ -9,6 +9,7 @@ import {
   getBillReceipt,
   getTodayTokens,
 } from "../../../services/api";
+import { printThermalBill } from "../../../utils/thermalPrinter";
 
 export default function PaymentsPage() {
   const { getValidAdminToken } = useAuth();
@@ -195,56 +196,62 @@ export default function PaymentsPage() {
         </div>
       )}
 
-      {/* Shift Summary Cards */}
-      <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
-        <div className="card" style={{ padding: "18px" }}>
-          <div style={{ fontSize: "0.75rem", fontWeight: "600", color: "var(--text-muted)", textTransform: "uppercase" }}>
-            Total Billed Today
+      {/* Shift Summary Cards - Sticky & Density Adaptive */}
+      <div className="sticky-kpi-container">
+        <div className="kpi-grid">
+          <div className="kpi-card">
+            <div className="kpi-card-header">
+              <span className="kpi-card-title">Total Billed Today</span>
+              <span className="kpi-card-icon">🧾</span>
+            </div>
+            <div className="kpi-card-value">
+              ₹{shiftSummary?.total_sales ?? 0}
+            </div>
+            <div className="kpi-card-sub">
+              {shiftSummary?.total_orders ?? 0} Orders
+            </div>
           </div>
-          <div style={{ fontSize: "1.6rem", fontWeight: "800", color: "var(--text-main)", marginTop: "4px" }}>
-            ₹{shiftSummary?.total_sales ?? 0}
-          </div>
-          <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginTop: "2px" }}>
-            {shiftSummary?.total_orders ?? 0} Orders
-          </div>
-        </div>
 
-        <div className="card" style={{ padding: "18px" }}>
-          <div style={{ fontSize: "0.75rem", fontWeight: "600", color: "var(--text-muted)", textTransform: "uppercase" }}>
-            Real Cash Inflow
+          <div className="kpi-card">
+            <div className="kpi-card-header">
+              <span className="kpi-card-title" style={{ color: "var(--color-primary)" }}>Real Cash Inflow</span>
+              <span className="kpi-card-icon">💵</span>
+            </div>
+            <div className="kpi-card-value" style={{ color: "var(--color-primary)" }}>
+              ₹{shiftSummary?.cash_collected ?? 0}
+            </div>
+            <div className="kpi-card-sub">
+              Physical cash in drawer
+            </div>
           </div>
-          <div style={{ fontSize: "1.6rem", fontWeight: "800", color: "var(--color-primary)", marginTop: "4px" }}>
-            ₹{shiftSummary?.cash_collected ?? 0}
-          </div>
-          <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginTop: "2px" }}>
-            Physical cash in drawer
-          </div>
-        </div>
 
-        <div className="card" style={{ padding: "18px" }}>
-          <div style={{ fontSize: "0.75rem", fontWeight: "600", color: "var(--text-muted)", textTransform: "uppercase" }}>
-            UPI Digital Collections
+          <div className="kpi-card">
+            <div className="kpi-card-header">
+              <span className="kpi-card-title" style={{ color: "#0284C7" }}>UPI Digital Collections</span>
+              <span className="kpi-card-icon">📱</span>
+            </div>
+            <div className="kpi-card-value" style={{ color: "#0284C7" }}>
+              ₹{shiftSummary?.upi_collected ?? 0}
+            </div>
+            <div className="kpi-card-sub">
+              Bank QR settlements
+            </div>
           </div>
-          <div style={{ fontSize: "1.6rem", fontWeight: "800", color: "#0284C7", marginTop: "4px" }}>
-            ₹{shiftSummary?.upi_collected ?? 0}
-          </div>
-          <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginTop: "2px" }}>
-            Bank QR settlements
-          </div>
-        </div>
 
-        <div className="card" style={{ padding: "18px" }}>
-          <div style={{ fontSize: "0.75rem", fontWeight: "600", color: "var(--text-muted)", textTransform: "uppercase" }}>
-            Credit (Khata) Billed
-          </div>
-          <div style={{ fontSize: "1.6rem", fontWeight: "800", color: "var(--chai-gold)", marginTop: "4px" }}>
-            ₹{shiftSummary?.credit_billed ?? 0}
-          </div>
-          <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginTop: "2px" }}>
-            Pending balance
+          <div className="kpi-card">
+            <div className="kpi-card-header">
+              <span className="kpi-card-title" style={{ color: "var(--chai-gold)" }}>Credit (Khata) Billed</span>
+              <span className="kpi-card-icon">💳</span>
+            </div>
+            <div className="kpi-card-value" style={{ color: "var(--chai-gold)" }}>
+              ₹{shiftSummary?.credit_billed ?? 0}
+            </div>
+            <div className="kpi-card-sub">
+              Pending balance
+            </div>
           </div>
         </div>
-      </section>
+      </div>
 
       {/* Orders Awaiting Payment Settlement */}
       <div className="card" style={{ overflow: "hidden" }}>
@@ -262,8 +269,8 @@ export default function PaymentsPage() {
             All current orders have been paid and settled! 🎉
           </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table>
+          <div className="table-container">
+            <table className="sticky-table-header">
               <thead>
                 <tr>
                   <th>Token #</th>
@@ -374,8 +381,8 @@ export default function PaymentsPage() {
           </h3>
         </div>
 
-        <div style={{ overflowX: "auto" }}>
-          <table>
+        <div className="table-container">
+          <table className="sticky-table-header">
             <thead>
               <tr>
                 <th>Tx ID</th>
@@ -697,6 +704,8 @@ export default function PaymentsPage() {
       {/* Thermal Bill Receipt Modal */}
       {activeReceipt && (
         <div
+          data-thermal-receipt-backdrop="true"
+          className="receipt-modal-backdrop"
           style={{
             position: "fixed",
             inset: 0,
@@ -710,6 +719,8 @@ export default function PaymentsPage() {
           }}
         >
           <div
+            data-thermal-receipt="true"
+            className="receipt-card-container"
             style={{
               background: "#FAFAFA",
               color: "#111111",
@@ -725,48 +736,88 @@ export default function PaymentsPage() {
             }}
           >
             <div style={{ textAlign: "center", borderBottom: "1px dashed #666", paddingBottom: "10px", marginBottom: "10px" }}>
-              <div style={{ fontSize: "1.15rem", fontWeight: "900" }}>{activeReceipt.shop_name}</div>
+              <div style={{ fontSize: "1.2rem", fontWeight: "900", letterSpacing: "1px" }}>{activeReceipt.shop_name}</div>
               <div style={{ fontSize: "0.75rem", color: "#444" }}>{activeReceipt.tagline}</div>
               <div style={{ fontSize: "0.72rem", color: "#666" }}>{activeReceipt.address}</div>
+              {activeReceipt.phone && <div style={{ fontSize: "0.72rem", color: "#666" }}>Phone: {activeReceipt.phone}</div>}
+              {activeReceipt.fssai_license && <div style={{ fontSize: "0.7rem", color: "#666" }}>FSSAI: {activeReceipt.fssai_license}</div>}
             </div>
 
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-              <span>TOKEN #{activeReceipt.daily_token_number}</span>
-              <span>{activeReceipt.receipt_number}</span>
+            <div style={{ textAlign: "center", background: "#eee", padding: "6px", borderRadius: "6px", fontWeight: "900", fontSize: "1.15rem", margin: "8px 0" }}>
+              TOKEN #{activeReceipt.daily_token_number}
             </div>
 
+            <div style={{ fontSize: "0.75rem", borderBottom: "1px dashed #666", paddingBottom: "8px", marginBottom: "8px", lineHeight: "1.4" }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span>Order: <strong>{activeReceipt.order_number}</strong></span>
+                <span>{activeReceipt.date_time}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span>Customer: {activeReceipt.customer_name}</span>
+                <span>{activeReceipt.table_or_counter}</span>
+              </div>
+            </div>
+
+            {/* Line Items Table with Dish Price */}
             <div style={{ borderBottom: "1px dashed #666", paddingBottom: "8px", marginBottom: "8px" }}>
-              {activeReceipt.items?.map((it, idx) => (
-                <div key={idx} style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-                  <span>{it.quantity}x {it.name}</span>
-                  <span>₹{it.total}</span>
-                </div>
-              ))}
+              <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1.1fr 1fr", fontWeight: "800", fontSize: "0.74rem", borderBottom: "1px solid #ccc", paddingBottom: "4px", marginBottom: "6px" }}>
+                <span>ITEM</span>
+                <span style={{ textAlign: "center" }}>QTY × RATE</span>
+                <span style={{ textAlign: "right" }}>AMOUNT</span>
+              </div>
+              {activeReceipt.items?.map((it, idx) => {
+                const itemTotal = it.total_price != null ? Number(it.total_price) : (it.total != null ? Number(it.total) : (Number(it.unit_price || 0) * Number(it.quantity || 1)));
+                const unitPrice = it.unit_price != null ? Number(it.unit_price) : (it.quantity ? (itemTotal / it.quantity) : itemTotal);
+                return (
+                  <div key={idx} style={{ marginBottom: "5px", fontSize: "0.82rem" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1.1fr 1fr", alignItems: "center" }}>
+                      <span style={{ fontWeight: "700" }}>{it.name}</span>
+                      <span style={{ textAlign: "center", fontSize: "0.75rem", color: "#333" }}>
+                        {it.quantity} × ₹{unitPrice.toFixed(2)}
+                      </span>
+                      <span style={{ textAlign: "right", fontWeight: "800" }}>
+                        ₹{itemTotal.toFixed(2)}
+                      </span>
+                    </div>
+                    {it.customizations && (
+                      <div style={{ fontSize: "0.68rem", color: "#666", fontStyle: "italic" }}>
+                        {it.customizations}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
-            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", fontSize: "1.05rem", marginBottom: "16px" }}>
-              <span>TOTAL DUE:</span>
-              <span>₹{activeReceipt.total_amount}</span>
+            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", fontSize: "1.05rem", marginBottom: "6px" }}>
+              <span>NET TOTAL:</span>
+              <span>₹{Number(activeReceipt.total_amount).toFixed(2)}</span>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", marginBottom: "10px" }}>
+              <span>Payment Mode:</span>
+              <span><strong>{activeReceipt.payment_method}</strong> ({activeReceipt.payment_status || "PAID"})</span>
             </div>
 
             <div style={{ textAlign: "center", borderTop: "1px dashed #666", paddingTop: "10px", color: "#666", fontSize: "0.75rem" }}>
               {activeReceipt.footer_message || "Thank you! Visit again for fresh chai ☕"}
             </div>
 
-            <div style={{ marginTop: "16px", display: "flex", gap: "8px" }}>
+            <div className="no-print" style={{ marginTop: "16px", display: "flex", gap: "8px" }}>
               <button
-                onClick={() => window.print()}
+                onClick={() => printThermalBill(activeReceipt)}
                 style={{
                   flex: 1,
                   background: "#111",
                   color: "#FFF",
                   border: "none",
                   borderRadius: "6px",
-                  padding: "8px",
+                  padding: "9px",
+                  fontWeight: "700",
                   cursor: "pointer",
                 }}
               >
-                🖨️ Print Receipt
+                🖨️ Print Thermal Bill (80mm)
               </button>
               <button
                 onClick={() => setActiveReceipt(null)}
@@ -776,8 +827,9 @@ export default function PaymentsPage() {
                   color: "#111",
                   border: "none",
                   borderRadius: "6px",
-                  padding: "8px",
+                  padding: "9px",
                   cursor: "pointer",
+                  fontWeight: "600",
                 }}
               >
                 Close

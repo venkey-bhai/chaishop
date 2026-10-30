@@ -104,6 +104,15 @@ except ImportError:
 
 app.include_router(analytics_router)
 
+# Dining Tables & Seat Capacity Management Router
+try:
+    from routers.tables import router as tables_router
+except ImportError:
+    from backend.routers.tables import router as tables_router
+
+app.include_router(tables_router)
+
+
 
 @app.get("/", tags=["General"])
 def read_root():

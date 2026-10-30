@@ -8,6 +8,7 @@ import {
   recordCreditRepayment,
   getBillReceipt,
 } from "../../../../services/api";
+import { printThermalBill } from "../../../../utils/thermalPrinter";
 
 function CustomerProfileContent() {
   const params = useParams();
@@ -385,93 +386,56 @@ function CustomerProfileContent() {
       )}
 
       {/* 2. Key Financial Summary Cards (Section 2 & 4) */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
-          gap: "14px",
-        }}
-      >
-        {/* Total Amount Purchased */}
-        <div className="card" style={{ padding: "18px 20px" }}>
-          <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: "600", textTransform: "uppercase" }}>
-            Total Purchased
+      <div className="sticky-kpi-container">
+        <div className="kpi-grid">
+          {/* Total Amount Purchased */}
+          <div className="card kpi-card">
+            <div className="kpi-card-title">Total Purchased</div>
+            <div className="kpi-card-value">₹{Number(summary?.total_purchased ?? customer?.total_spent ?? 0).toFixed(2)}</div>
+            <div className="kpi-card-sub">{summary?.total_orders_count ?? 0} orders ({filterMode === "all" ? "Lifetime" : "Filtered period"})</div>
           </div>
-          <div style={{ fontSize: "1.5rem", fontWeight: "700", color: "var(--text-main)", marginTop: "4px" }}>
-            ₹{Number(summary?.total_purchased ?? customer?.total_spent ?? 0).toFixed(2)}
-          </div>
-          <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginTop: "4px" }}>
-            {summary?.total_orders_count ?? 0} orders ({filterMode === "all" ? "Lifetime" : "Filtered period"})
-          </div>
-        </div>
 
-        {/* Total Amount Paid */}
-        <div className="card" style={{ padding: "18px 20px" }}>
-          <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: "600", textTransform: "uppercase" }}>
-            Total Amount Paid
+          {/* Total Amount Paid */}
+          <div className="card kpi-card">
+            <div className="kpi-card-title">Total Amount Paid</div>
+            <div className="kpi-card-value" style={{ color: "#059669" }}>₹{Number(summary?.total_paid_total ?? 0).toFixed(2)}</div>
+            <div className="kpi-card-sub">Immediate: ₹{Number(summary?.total_paid_immediate ?? 0).toFixed(2)} | Repaid: ₹{Number(summary?.total_credit_repaid ?? 0).toFixed(2)}</div>
           </div>
-          <div style={{ fontSize: "1.5rem", fontWeight: "700", color: "#059669", marginTop: "4px" }}>
-            ₹{Number(summary?.total_paid_total ?? 0).toFixed(2)}
-          </div>
-          <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginTop: "4px" }}>
-            Immediate: ₹{Number(summary?.total_paid_immediate ?? 0).toFixed(2)} | Repaid: ₹{Number(summary?.total_credit_repaid ?? 0).toFixed(2)}
-          </div>
-        </div>
 
-        {/* Current Outstanding Balance */}
-        <div
-          className="card"
-          style={{
-            padding: "18px 20px",
-            borderLeft: `4px solid ${Number(customer?.current_balance) > 0 ? "var(--status-err)" : "var(--status-success)"}`,
-          }}
-        >
-          <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: "600", textTransform: "uppercase" }}>
-            Current Outstanding Balance
+          {/* Current Outstanding Balance */}
+          <div className="card kpi-card" style={{ borderLeft: `4px solid ${Number(customer?.current_balance) > 0 ? "var(--status-err)" : "var(--status-success)"}` }}>
+            <div className="kpi-card-title">Current Outstanding Balance</div>
+            <div className="kpi-card-value" style={{ color: Number(customer?.current_balance) > 0 ? "var(--status-err)" : "var(--status-success)" }}>
+              ₹{Number(customer?.current_balance ?? 0).toFixed(2)}
+            </div>
+            <div className="kpi-card-sub">Limit: ₹{Number(customer?.credit_limit ?? 0).toFixed(2)} | Avail: ₹{Number(customer?.available_credit ?? 0).toFixed(2)}</div>
           </div>
-          <div
-            style={{
-              fontSize: "1.5rem",
-              fontWeight: "700",
-              color: Number(customer?.current_balance) > 0 ? "var(--status-err)" : "var(--status-success)",
-              marginTop: "4px",
-            }}
-          >
-            ₹{Number(customer?.current_balance ?? 0).toFixed(2)}
-          </div>
-          <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginTop: "4px" }}>
-            Limit: ₹{Number(customer?.credit_limit ?? 0).toFixed(2)} | Avail: ₹{Number(customer?.available_credit ?? 0).toFixed(2)}
-          </div>
-        </div>
 
-        {/* Period Opening & Closing Balances (Requirement 4, 5, 6) */}
-        <div className="card" style={{ padding: "18px 20px" }}>
-          <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: "600", textTransform: "uppercase" }}>
-            Period Credit Ledger
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "6px" }}>
-            <div>
-              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Opening Balance</div>
-              <div style={{ fontSize: "1.1rem", fontWeight: "700", color: "#475569" }}>
-                ₹{Number(summary?.opening_credit_balance ?? 0).toFixed(2)}
+          {/* Period Opening & Closing Balances */}
+          <div className="card kpi-card">
+            <div className="kpi-card-title">Period Credit Ledger</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
+              <div>
+                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Opening</div>
+                <div style={{ fontSize: "1rem", fontWeight: "700", color: "#475569" }}>
+                  ₹{Number(summary?.opening_credit_balance ?? 0).toFixed(2)}
+                </div>
+              </div>
+              <div style={{ fontSize: "0.9rem", color: "#94a3b8" }}>➔</div>
+              <div>
+                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>Closing</div>
+                <div
+                  style={{
+                    fontSize: "1rem",
+                    fontWeight: "700",
+                    color: Number(summary?.closing_credit_balance) > 0 ? "var(--status-err)" : "var(--status-success)",
+                  }}
+                >
+                  ₹{Number(summary?.closing_credit_balance ?? 0).toFixed(2)}
+                </div>
               </div>
             </div>
-            <div style={{ fontSize: "1rem", color: "#94a3b8" }}>➔</div>
-            <div>
-              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Closing Balance</div>
-              <div
-                style={{
-                  fontSize: "1.1rem",
-                  fontWeight: "700",
-                  color: Number(summary?.closing_credit_balance) > 0 ? "var(--status-err)" : "var(--status-success)",
-                }}
-              >
-                ₹{Number(summary?.closing_credit_balance ?? 0).toFixed(2)}
-              </div>
-            </div>
-          </div>
-          <div style={{ fontSize: "0.73rem", color: "var(--text-dim)", marginTop: "6px" }}>
-            Added: +₹{Number(summary?.total_credit_added ?? 0).toFixed(2)} | Repaid: -₹{Number(summary?.total_credit_repaid ?? 0).toFixed(2)}
+            <div className="kpi-card-sub">Added: +₹{Number(summary?.total_credit_added ?? 0).toFixed(2)} | Repaid: -₹{Number(summary?.total_credit_repaid ?? 0).toFixed(2)}</div>
           </div>
         </div>
       </div>
@@ -827,8 +791,8 @@ function CustomerProfileContent() {
             </span>
           </div>
 
-          <div style={{ overflowX: "auto" }}>
-            <table>
+          <div className="table-container">
+            <table className="w-full text-left border-collapse sticky-table-header">
               <thead>
                 <tr>
                   <th>Date</th>
@@ -910,8 +874,8 @@ function CustomerProfileContent() {
             </div>
           </div>
 
-          <div style={{ overflowX: "auto" }}>
-            <table>
+          <div className="table-container">
+            <table className="w-full text-left border-collapse sticky-table-header">
               <thead>
                 <tr>
                   <th>Order Date & Time</th>
@@ -1389,11 +1353,11 @@ function CustomerProfileContent() {
 
             <div style={{ display: "flex", justifyContent: "space-between", gap: "10px" }}>
               <button
-                onClick={() => window.print()}
+                onClick={() => printThermalBill(activeReceipt)}
                 className="btn-primary"
                 style={{ flex: 1, padding: "8px", fontSize: "0.85rem" }}
               >
-                🖨️ Print
+                🖨️ Print Thermal Bill (80mm)
               </button>
               <button
                 onClick={() => setActiveReceipt(null)}

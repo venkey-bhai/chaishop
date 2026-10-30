@@ -1,12 +1,77 @@
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field, field_validator, ConfigDict
+from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
 
 try:
     from models.order import PaymentMethod, PaymentStatus, OrderStatus
 except ImportError:
     from backend.models.order import PaymentMethod, PaymentStatus, OrderStatus
+
+
+# -------------------------------------------------------------
+# Shared Dish Schemas
+# -------------------------------------------------------------
+
+class SharedDishCreate(BaseModel):
+    """
+    Payload for sharing an order item with another table/seat.
+    Billing stays with the original table; no duplicate charges or tickets.
+    """
+    destination_table: str = Field(..., min_length=1, max_length=20, description="Destination table number")
+    destination_seat: Optional[str] = Field(default=None, max_length=20, description="Destination seat number")
+    quantity: int = Field(..., gt=0, description="Number of units to share")
+    staff_member: Optional[str] = Field(default=None, max_length=100, description="Staff member who recorded the share")
+
+
+class SharedDishResponse(BaseModel):
+    """
+    Representation of a shared dish record with complete origin and destination details.
+    """
+    id: int
+    original_order_id: int
+    original_order_item_id: int
+    original_table_number: Optional[str] = None
+    original_seat_number: Optional[str] = None
+    destination_table_id: str
+    destination_table_number: Optional[str] = None
+    destination_seat_no: Optional[str] = None
+    destination_seat_number: Optional[str] = None
+    quantity: int
+    status: str
+    created_by: Optional[str] = None
+    created_at: datetime
+    formatted_time: Optional[str] = None
+    dish_name: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="after")
+    def sync_dest_fields(self):
+        if not self.destination_table_number and self.destination_table_id:
+            self.destination_table_number = self.destination_table_id
+        if not self.destination_table_id and self.destination_table_number:
+            self.destination_table_id = self.destination_table_number
+        if not self.destination_seat_number and self.destination_seat_no:
+            self.destination_seat_number = self.destination_seat_no
+        if not self.destination_seat_no and self.destination_seat_number:
+            self.destination_seat_no = self.destination_seat_number
+        if not self.formatted_time and self.created_at:
+            try:
+                self.formatted_time = self.created_at.strftime("%I:%M %p")
+            except Exception:
+                pass
+        return self
+
+
+
+class TableSeatChangeRequest(BaseModel):
+    """
+    Payload for changing customer's table or seat prior to delivery.
+    """
+    table_number: str = Field(..., min_length=1, max_length=20, description="New destination table number")
+    seat_number: Optional[str] = Field(default=None, max_length=20, description="New destination seat number")
+    reason: Optional[str] = Field(default=None, max_length=255, description="Optional audit reason")
 
 
 # -------------------------------------------------------------
@@ -31,14 +96,54 @@ class OrderItemResponse(BaseModel):
     """
     id: int
     order_id: int
-    menu_item_id: int
+    menu_item_id: Optional[int] = None
     item_name: str
     quantity: int
     unit_price: Decimal
     total_price: Decimal
     selected_options: Optional[Dict[str, Any]] = None
+    status: str = "PENDING"
+    cancelled_by: Optional[str] = None
+    cancelled_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    shared_quantity: int = 0
+    remaining_unshared_quantity: int = 0
+    shares: List[SharedDishResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class DishStatusUpdate(BaseModel):
+    """
+    Payload for Admin updating dish status (e.g. READY or PENDING).
+    """
+    status: str = Field(..., description="READY, PENDING, PREPARING, DELIVERED, or CANCELLED")
+
+
+class DishCancelRequest(BaseModel):
+    """
+    Payload for Admin cancelling an individual dish.
+    """
+    reason: Optional[str] = Field(default=None, max_length=255, description="Cancellation reason")
+
+
+class CustomerDishEdit(BaseModel):
+    """
+    Specification for customer modifying an existing item or adding a new dish.
+    """
+    item_id: Optional[int] = Field(default=None, description="Existing OrderItem ID if editing/cancelling existing item")
+    menu_item_id: Optional[int] = Field(default=None, description="Menu item ID if adding a new dish")
+    quantity: int = Field(..., ge=0, le=50, description="New quantity (0 = remove/cancel)")
+    selected_options: Optional[Dict[str, Any]] = None
+
+
+class CustomerOrderEditRequest(BaseModel):
+    """
+    Payload for customer editing active eligible orders on My Menu page.
+    """
+    customer_phone: str = Field(..., description="Mandatory phone number to verify ownership")
+    edits: List[CustomerDishEdit] = Field(..., min_length=1, description="List of item changes/additions")
+
 
 
 # -------------------------------------------------------------
@@ -49,11 +154,14 @@ class OrderCreate(BaseModel):
     """
     Payload for placing a new order via Customer QR menu or Counter POS.
     Both Customer Name and Customer Phone Number are mandatory.
+    Dine-in requires table_number and seat_number. Takeaway does not.
     """
     customer_name: str = Field(..., min_length=2, max_length=100, description="Mandatory customer name for token callout", example="Ramesh Kumar")
     customer_phone: str = Field(..., description="Mandatory customer 10-digit mobile number", example="9876543210")
     customer_id: Optional[int] = Field(default=None, description="Optional Customer database ID / number")
-    table_number: Optional[str] = Field(default=None, max_length=20, description="Dine-in table number from QR scan")
+    order_type: str = Field(default="DINE_IN", description="DINE_IN or TAKEAWAY")
+    table_number: Optional[str] = Field(default=None, max_length=20, description="Dine-in table number (mandatory for DINE_IN)")
+    seat_number: Optional[str] = Field(default=None, max_length=20, description="Dine-in seat number (mandatory for DINE_IN)")
     counter_number: Optional[str] = Field(default=None, max_length=20, description="Counter pickup number from QR scan")
     payment_method: PaymentMethod = Field(default=PaymentMethod.CASH, description="CASH, UPI, CARD, or CREDIT")
     notes: Optional[str] = Field(default=None, max_length=300, description="Special preparation instructions")
@@ -77,6 +185,24 @@ class OrderCreate(BaseModel):
         if cleaned == "0000000000":
             raise ValueError("Valid customer phone number is mandatory (cannot be all zeros)")
         return cleaned[-10:]
+
+    @model_validator(mode="after")
+    def validate_dine_in_table_and_seat(self):
+        otype = (self.order_type or "DINE_IN").upper().strip()
+        self.order_type = otype
+        if otype == "DINE_IN":
+            tbl = (self.table_number or "").strip()
+            seat = (self.seat_number or "").strip()
+            if not tbl:
+                raise ValueError("Table number is mandatory for dine-in orders.")
+            if not seat:
+                raise ValueError("Seat number is mandatory for dine-in orders.")
+            self.table_number = tbl
+            self.seat_number = seat
+        elif otype == "TAKEAWAY":
+            self.table_number = None
+            self.seat_number = None
+        return self
 
 
 class OrderStatusUpdate(BaseModel):
@@ -164,6 +290,9 @@ class OrderResponse(BaseModel):
     customer_id: Optional[int] = None
     customer_name: str
     customer_phone: str
+    order_type: str = "DINE_IN"
+    table_number: Optional[str] = None
+    seat_number: Optional[str] = None
     total_amount: Decimal
     payment_method: PaymentMethod
     payment_status: PaymentStatus
@@ -173,6 +302,8 @@ class OrderResponse(BaseModel):
     updated_at: datetime
     items: List[OrderItemResponse] = []
     otp_challenge: Optional[OTPChallengeInfo] = None
+    can_change_table_or_seat: bool = True
+    shared_dishes: List[SharedDishResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
 

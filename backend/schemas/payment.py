@@ -107,6 +107,7 @@ class BillReceiptItem(BaseModel):
     quantity: int
     unit_price: Decimal
     total_price: Decimal
+    total: Optional[Decimal] = None
     customizations: Optional[str] = None
 
 

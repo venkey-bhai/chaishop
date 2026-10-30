@@ -733,6 +733,193 @@ export async function adminOrderOverride(orderId, overrideReason, token) {
   });
 }
 
+/**
+ * Change table or seat for an order prior to delivery (Requirement 2 & 4)
+ * Supports both object payload: { table_number, seat_number, reason }
+ * and positional parameters: (orderId, tableNumber, seatNumber, token)
+ */
+export async function updateOrderTableSeat(orderId, payloadOrTable, maybeSeat = null, maybeReasonOrToken = null, maybeToken = null) {
+  let table_number = "";
+  let seat_number = null;
+  let reason = null;
+  let token = null;
+
+  if (typeof payloadOrTable === "object" && payloadOrTable !== null) {
+    table_number = payloadOrTable.table_number || payloadOrTable.table || "";
+    seat_number = payloadOrTable.seat_number || payloadOrTable.seat || null;
+    reason = payloadOrTable.reason || null;
+    token = maybeSeat; // 3rd arg when 2nd is payload
+  } else {
+    table_number = payloadOrTable;
+    seat_number = maybeSeat;
+    if (typeof maybeReasonOrToken === "string" && (maybeReasonOrToken.startsWith("eyJ") || maybeToken)) {
+      token = maybeReasonOrToken;
+      reason = null;
+    } else {
+      reason = maybeReasonOrToken;
+      token = maybeToken;
+    }
+  }
+
+  const cleanTable = String(table_number || "").trim();
+  const cleanSeat = seat_number ? String(seat_number).trim() : null;
+
+  const headers = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  return fetchFromApi(`/api/orders/${orderId}/table-seat`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({
+      table_number: cleanTable,
+      seat_number: cleanSeat,
+      reason: reason || null,
+    }),
+  });
+}
+
+/**
+ * Share a dish with another table (Requirement 5)
+ */
+export async function shareOrderDish(orderId, itemId, shareData, token = null) {
+  const headers = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const payload = {
+    destination_table: String(shareData.destination_table || shareData.destination_table_number || "").trim(),
+    destination_seat: (shareData.destination_seat || shareData.destination_seat_number) ? String(shareData.destination_seat || shareData.destination_seat_number).trim() : null,
+    quantity: Number(shareData.quantity) || 1,
+    staff_member: shareData.staff_member || null,
+  };
+  return fetchFromApi(`/api/orders/${orderId}/items/${itemId}/share`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * Fetch shared dishes received by a table (Requirement 5)
+ */
+export async function getTableSharedDishes(tableNumber) {
+  return fetchFromApi(`/api/orders/tables/${tableNumber}/shared-dishes`);
+}
+
+/**
+ * Reverse a shared dish transaction (Requirement 5)
+ */
+export async function reverseSharedDish(shareId, token) {
+  return fetchFromApi(`/api/orders/shares/${shareId}/reverse`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+/**
+ * Update individual dish status (Admin only) - Requirement 2A
+ */
+export async function updateDishStatus(orderId, itemId, status, token = null) {
+  const headers = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return fetchFromApi(`/api/orders/${orderId}/items/${itemId}/dish-status`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({ status }),
+  });
+}
+
+/**
+ * Cancel individual dish (Admin only) - Requirement 2B
+ */
+export async function cancelIndividualDish(orderId, itemId, reason = null, token = null) {
+  const headers = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return fetchFromApi(`/api/orders/${orderId}/items/${itemId}/cancel-dish`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ reason }),
+  });
+}
+
+/**
+ * Find customer orders by mobile number or name - Requirement 4A
+ */
+export async function findCustomerOrders(query) {
+  return fetchFromApi(`/api/orders/customer/find-orders?query=${encodeURIComponent(query)}`);
+}
+
+/**
+ * Customer edit active order (add items, change qty, remove items) - Requirement 4C
+ */
+export async function customerEditOrder(orderId, { customer_phone, edits }) {
+  return fetchFromApi(`/api/orders/${orderId}/customer-edit`, {
+    method: "PATCH",
+    body: JSON.stringify({ customer_phone, edits }),
+  });
+}
+
+/**
+ * Dining Table Capacity Management (Requirement 4)
+ */
+export async function getDiningTables() {
+  return fetchFromApi("/tables");
+}
+
+export async function getAllDiningTables(token = null) {
+  const headers = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return fetchFromApi("/tables/all", { headers });
+}
+
+export async function createOrUpdateDiningTable(tableData, token = null) {
+  const headers = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return fetchFromApi("/tables", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(tableData),
+  });
+}
+
+export async function updateDiningTableCapacity(tableNumber, { max_seats, is_active }, token = null) {
+  const headers = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return fetchFromApi(`/tables/${tableNumber}`, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({ max_seats, is_active }),
+  });
+}
+
+export async function deleteDiningTable(tableNumber, token = null) {
+  const headers = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return fetchFromApi(`/tables/${tableNumber}`, {
+    method: "DELETE",
+    headers,
+  });
+}
+
+/**
+ * Customer Credit Limit Management (Requirement 3)
+ */
+export async function updateCustomerCreditLimit(customerId, { credit_limit, reason = null }, token = null) {
+  const headers = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return fetchFromApi(`/api/customers/${customerId}/credit-limit`, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({ credit_limit: Number(credit_limit), reason }),
+  });
+}
+
+export async function getCustomerCreditLimitHistory(customerId, token = null) {
+  const headers = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return fetchFromApi(`/api/customers/${customerId}/credit-limit-history`, { headers });
+}
+
+
+
 
 // -------------------------------------------------------------
 // Phase 8: Payments & Counter Billing Engine API Services
@@ -998,6 +1185,17 @@ export default {
   cancelOrderVerification,
   getOrderVerificationStatus,
   adminOrderOverride,
+  updateOrderTableSeat,
+  shareOrderDish,
+  getTableSharedDishes,
+  reverseSharedDish,
+  getDiningTables,
+  getAllDiningTables,
+  createOrUpdateDiningTable,
+  updateDiningTableCapacity,
+  deleteDiningTable,
+  updateCustomerCreditLimit,
+  getCustomerCreditLimitHistory,
   settleOrderPayment,
   recordCreditRepayment,
   getOrderUpiQr,

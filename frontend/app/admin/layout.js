@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import AdminSidebar from "../../components/AdminSidebar";
 import AdminHeader from "../../components/AdminHeader";
 import { useAuth } from "../../context/AuthContext";
+import { KpiSizeProvider } from "../../context/KpiSizeContext";
 
 function AdminLayoutContent({ children }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -28,34 +29,30 @@ function AdminLayoutContent({ children }) {
   }, [isCustomer, router]);
 
   return (
-    <div
-      style={{
-        display: "flex",
-        minHeight: "100vh",
-        background: "var(--bg-main)",
-        color: "var(--text-main)",
-      }}
-    >
-      {/* Persistent Left Sidebar */}
-      <AdminSidebar
-        collapsed={collapsed}
-        onToggleCollapse={() => setCollapsed(!collapsed)}
-        mobileOpen={mobileOpen}
-        onCloseMobile={() => setMobileOpen(false)}
-      />
-
-      {/* Main Content Area */}
+    <KpiSizeProvider>
       <div
         style={{
-          flex: 1,
           display: "flex",
-          flexDirection: "column",
-          minWidth: 0,
+          minHeight: "100vh",
           background: "var(--bg-main)",
+          color: "var(--text-main)",
+          position: "relative",
         }}
       >
-        {/* Top Navigation Bar */}
-        <AdminHeader onOpenMobile={() => setMobileOpen(true)} />
+        {/* Persistent Left Sidebar */}
+        <AdminSidebar
+          collapsed={collapsed}
+          onToggleCollapse={() => setCollapsed(!collapsed)}
+          mobileOpen={mobileOpen}
+          onCloseMobile={() => setMobileOpen(false)}
+        />
+
+        {/* Main Content Area with independent scrolling */}
+        <div
+          className={`admin-main-wrapper ${collapsed ? "sidebar-collapsed" : "sidebar-expanded"}`}
+        >
+          {/* Top Navigation Bar */}
+          <AdminHeader onOpenMobile={() => setMobileOpen(true)} />
 
         {/* Selected Page Content - Always Rendered to Maintain Segment Tree */}
         <main
@@ -156,6 +153,7 @@ function AdminLayoutContent({ children }) {
         </main>
       </div>
     </div>
+    </KpiSizeProvider>
   );
 }
 

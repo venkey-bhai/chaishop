@@ -276,8 +276,8 @@ export default function CustomersPage() {
           </div>
         </div>
 
-        <div style={{ overflowX: "auto" }}>
-          <table>
+        <div className="table-container">
+          <table className="w-full text-left border-collapse sticky-table-header">
             <thead>
               <tr>
                 <th>Customer</th>

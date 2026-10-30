@@ -192,142 +192,92 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* 4 Rich KPI Financial & Operations Cards - Matching Exact Image Styling */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-          gap: "16px",
-        }}
-      >
-        {/* Card 1: Total Customers */}
-        <Link
-          href="/admin/customers"
-          className="card"
-          style={{
-            background: "#FFFFFF",
-            border: "1px solid var(--border-subtle)",
-            borderRadius: "14px",
-            padding: "20px",
-            boxShadow: "0 2px 6px rgba(0,0,0,0.03)",
-            textDecoration: "none",
-            color: "inherit",
-            display: "block",
-            transition: "transform 0.15s ease, box-shadow 0.15s ease",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: "600" }}>
-              Total Customers
-            </span>
-            <span style={{ fontSize: "1.4rem" }}>👥</span>
-          </div>
-          <div style={{ fontSize: "1.7rem", fontWeight: "800", color: "var(--text-main)", marginTop: "8px" }}>
-            {summary?.total_customers ?? 0}
-          </div>
-          <div style={{ fontSize: "0.78rem", color: "#0F766E", marginTop: "4px", fontWeight: "600" }}>
-            {summary?.credit_approved_customers ?? 0} Rule 61 Khata Eligible →
-          </div>
-        </Link>
+      {/* 4 Rich KPI Financial & Operations Cards - Sticky & Density-Adaptive */}
+      <div className="sticky-kpi-container">
+        <div className="kpi-grid">
+          {/* Card 1: Total Customers */}
+          <Link
+            href="/admin/customers"
+            className="kpi-card"
+            title="View customer directory and khata profiles"
+          >
+            <div className="kpi-card-header">
+              <span className="kpi-card-title">Total Customers</span>
+              <span className="kpi-card-icon">👥</span>
+            </div>
+            <div className="kpi-card-value">
+              {summary?.total_customers ?? 0}
+            </div>
+            <div className="kpi-card-sub" style={{ color: "#0F766E", fontWeight: "600" }}>
+              {summary?.credit_approved_customers ?? 0} Rule 61 Khata Eligible →
+            </div>
+          </Link>
 
-        {/* Card 2: Today's Revenue */}
-        <Link
-          href="/admin/daily-sales"
-          className="card"
-          style={{
-            background: "#FFFFFF",
-            border: "1px solid var(--border-subtle)",
-            borderRadius: "14px",
-            padding: "20px",
-            boxShadow: "0 2px 6px rgba(0,0,0,0.03)",
-            textDecoration: "none",
-            color: "inherit",
-            display: "block",
-            transition: "transform 0.15s ease, box-shadow 0.15s ease",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: "600" }}>
-              Today's Gross Sales
-            </span>
-            <span style={{ fontSize: "1.4rem" }}>💰</span>
-          </div>
-          <div style={{ fontSize: "1.7rem", fontWeight: "800", color: "#0F766E", marginTop: "8px" }}>
-            ₹{Number(summary?.today_billed_sales ?? summary?.today_sales ?? 0).toFixed(2)}
-          </div>
-          <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "4px" }}>
-            {tokenStats?.total_orders ?? summary?.today_order_count ?? 0} orders settled today →
-          </div>
-        </Link>
+          {/* Card 2: Today's Revenue */}
+          <Link
+            href="/admin/daily-sales"
+            className="kpi-card"
+            title="View daily sales summary"
+          >
+            <div className="kpi-card-header">
+              <span className="kpi-card-title">Today's Gross Sales</span>
+              <span className="kpi-card-icon">💰</span>
+            </div>
+            <div className="kpi-card-value" style={{ color: "#0F766E" }}>
+              ₹{Number(summary?.today_billed_sales ?? summary?.today_sales ?? 0).toFixed(2)}
+            </div>
+            <div className="kpi-card-sub">
+              {tokenStats?.total_orders ?? summary?.today_order_count ?? 0} orders settled today →
+            </div>
+          </Link>
 
-        {/* Card 3: Today's Operating Expenses */}
-        <Link
-          href="/admin/expenses"
-          className="card"
-          style={{
-            background: "#FFFFFF",
-            border: "1px solid var(--border-subtle)",
-            borderRadius: "14px",
-            padding: "20px",
-            boxShadow: "0 2px 6px rgba(0,0,0,0.03)",
-            textDecoration: "none",
-            color: "inherit",
-            display: "block",
-            transition: "transform 0.15s ease, box-shadow 0.15s ease",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: "600" }}>
-              Today's Operating Expenses
-            </span>
-            <span style={{ fontSize: "1.4rem" }}>📉</span>
-          </div>
-          <div style={{ fontSize: "1.7rem", fontWeight: "800", color: "#DC2626", marginTop: "8px" }}>
-            ₹{Number(summary?.today_expenses ?? 0).toFixed(2)}
-          </div>
-          <div style={{ fontSize: "0.78rem", color: "#B91C1C", marginTop: "4px", fontWeight: "600" }}>
-            Milk, tea powder, gas & inventory →
-          </div>
-        </Link>
+          {/* Card 3: Today's Operating Expenses */}
+          <Link
+            href="/admin/expenses"
+            className="kpi-card"
+            title="View shop expenses"
+          >
+            <div className="kpi-card-header">
+              <span className="kpi-card-title">Today's Operating Expenses</span>
+              <span className="kpi-card-icon">📉</span>
+            </div>
+            <div className="kpi-card-value" style={{ color: "#DC2626" }}>
+              ₹{Number(summary?.today_expenses ?? 0).toFixed(2)}
+            </div>
+            <div className="kpi-card-sub" style={{ color: "#B91C1C", fontWeight: "600" }}>
+              Milk, tea powder, gas & inventory →
+            </div>
+          </Link>
 
-        {/* Card 4: Outstanding Khata / Credit Receivable */}
-        <Link
-          href="/admin/credit"
-          className="card"
-          style={{
-            background: Number(summary?.total_outstanding_credit || 0) > 0 ? "#FFFBEB" : "#FFFFFF",
-            border: Number(summary?.total_outstanding_credit || 0) > 0 ? "1px solid #FDE68A" : "1px solid var(--border-subtle)",
-            borderRadius: "14px",
-            padding: "20px",
-            boxShadow: "0 2px 6px rgba(0,0,0,0.03)",
-            textDecoration: "none",
-            color: "inherit",
-            display: "block",
-            transition: "transform 0.15s ease, box-shadow 0.15s ease",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: "600" }}>
-              Outstanding Khata Debt
-            </span>
-            <span style={{ fontSize: "1.4rem" }}>
-              {Number(summary?.total_outstanding_credit || 0) > 0 ? "⚠️" : "✨"}
-            </span>
-          </div>
-          <div
+          {/* Card 4: Outstanding Khata / Credit Receivable */}
+          <Link
+            href="/admin/credit"
+            className="kpi-card"
+            title="View customer credit ledger"
             style={{
-              fontSize: "1.7rem",
-              fontWeight: "800",
-              color: Number(summary?.total_outstanding_credit || 0) > 0 ? "#D97706" : "#16A34A",
-              marginTop: "8px",
+              background: Number(summary?.total_outstanding_credit || 0) > 0 ? "#FFFBEB" : "#FFFFFF",
+              borderColor: Number(summary?.total_outstanding_credit || 0) > 0 ? "#FDE68A" : "var(--border-subtle)",
             }}
           >
-            ₹{Number(summary?.total_outstanding_credit ?? 0).toFixed(2)}
-          </div>
-          <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "4px" }}>
-            Customer balance receivable →
-          </div>
-        </Link>
+            <div className="kpi-card-header">
+              <span className="kpi-card-title">Outstanding Khata Debt</span>
+              <span className="kpi-card-icon">
+                {Number(summary?.total_outstanding_credit || 0) > 0 ? "⚠️" : "✨"}
+              </span>
+            </div>
+            <div
+              className="kpi-card-value"
+              style={{
+                color: Number(summary?.total_outstanding_credit || 0) > 0 ? "#D97706" : "#16A34A",
+              }}
+            >
+              ₹{Number(summary?.total_outstanding_credit ?? 0).toFixed(2)}
+            </div>
+            <div className="kpi-card-sub">
+              Customer balance receivable →
+            </div>
+          </Link>
+        </div>
       </div>
 
       {/* Two Dedicated Hubs: Customer Details & Expenses Details */}

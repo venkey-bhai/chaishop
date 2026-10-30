@@ -37,6 +37,9 @@ from .order import (
     OrderPaginationResponse,
     TokenDisplayItem,
     DailyTokenStats,
+    SharedDishCreate,
+    SharedDishResponse,
+    TableSeatChangeRequest,
 )
 from .payment import (
     PaymentSettleRequest,

@@ -359,6 +359,8 @@ def get_bill_receipt(
 
     receipt_items = []
     for item in (order.items or []):
+        if item.status == "CANCELLED":
+            continue
         opt_text = None
         if item.selected_options:
             parts = []
@@ -368,11 +370,13 @@ def get_bill_receipt(
                 parts.append(f"Strength: {item.selected_options['strength']}")
             opt_text = " | ".join(parts) if parts else None
 
+        tot = item.total_price if item.total_price is not None else (Decimal(str(item.unit_price)) * Decimal(str(item.quantity)))
         receipt_items.append(BillReceiptItem(
             name=item.item_name,
             quantity=item.quantity,
             unit_price=item.unit_price,
-            total_price=item.total_price,
+            total_price=tot,
+            total=tot,
             customizations=opt_text
         ))
 
@@ -398,8 +402,8 @@ def get_bill_receipt(
         subtotal=order.total_amount,
         tax_amount=Decimal("0.00"),
         total_amount=order.total_amount,
-        payment_method=str(order.payment_method),
-        payment_status=str(order.payment_status),
+        payment_method=order.payment_method.value if hasattr(order.payment_method, "value") else str(order.payment_method).split(".")[-1],
+        payment_status=order.payment_status.value if hasattr(order.payment_status, "value") else str(order.payment_status).split(".")[-1],
         transaction_reference=ref,
         cashier_name="Counter Cashier",
         footer_message="Thank you for visiting ChaiFlow! Please come again."

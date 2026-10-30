@@ -38,6 +38,10 @@ class OTPChallengeStatus(str, enum.Enum):
     MAX_ATTEMPTS_EXCEEDED = "MAX_ATTEMPTS_EXCEEDED"
     CANCELLED = "CANCELLED"
 
+class OrderType(str, enum.Enum):
+    DINE_IN = "DINE_IN"
+    TAKEAWAY = "TAKEAWAY"
+
 class Order(Base):
     __tablename__ = "orders"
 
@@ -53,6 +57,9 @@ class Order(Base):
     payment_method: Mapped[PaymentMethod] = mapped_column(Enum(PaymentMethod, name="payment_method_enum"), nullable=False)
     payment_status: Mapped[PaymentStatus] = mapped_column(Enum(PaymentStatus, name="payment_status_enum"), default=PaymentStatus.PENDING, nullable=False)
     order_status: Mapped[OrderStatus] = mapped_column(Enum(OrderStatus, name="order_status_enum"), default=OrderStatus.PENDING_OTP_VERIFICATION, nullable=False)
+    order_type: Mapped[str] = mapped_column(String(20), default="DINE_IN", nullable=False)
+    table_number: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
+    seat_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
@@ -78,6 +85,12 @@ class Order(Base):
         back_populates="order",
         cascade="all, delete-orphan",
         order_by="OrderOTPChallenge.created_at.desc()"
+    )
+    shared_dishes_sent: Mapped[list["SharedDishTransaction"]] = relationship(
+        "SharedDishTransaction",
+        back_populates="original_order",
+        cascade="all, delete-orphan",
+        order_by="SharedDishTransaction.created_at.desc()"
     )
 
     @property
@@ -139,9 +152,63 @@ class OrderItem(Base):
     # Customer choices: e.g. {"sugar": "High Sugar", "strength": "Kadak"}
     selected_options: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
+    # Individual dish lifecycle and admin cancellation controls
+    status: Mapped[str] = mapped_column(String(32), default="PENDING", index=True, nullable=False)
+    cancelled_by: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # Relationships
     order: Mapped["Order"] = relationship("Order", back_populates="items")
     menu_item: Mapped["MenuItem"] = relationship("MenuItem", back_populates="order_items")
+    shared_transactions: Mapped[list["SharedDishTransaction"]] = relationship(
+        "SharedDishTransaction",
+        back_populates="original_order_item",
+        cascade="all, delete-orphan",
+        order_by="SharedDishTransaction.created_at.desc()"
+    )
+
+    @property
+    def shared_quantity(self) -> int:
+        return sum(
+            st.quantity for st in (self.shared_transactions or [])
+            if getattr(st, "status", None) in ["CONFIRMED", "PENDING"]
+        )
+
+    @property
+    def remaining_unshared_quantity(self) -> int:
+        return max(0, self.quantity - self.shared_quantity)
 
     def __repr__(self) -> str:
         return f"<OrderItem item={self.item_name} qty={self.quantity} price={self.unit_price}>"
+
+
+class SharedDishStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    CONFIRMED = "CONFIRMED"
+    CANCELLED = "CANCELLED"
+    REVERSED = "REVERSED"
+
+
+class SharedDishTransaction(Base):
+    __tablename__ = "shared_dish_transactions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    original_order_id: Mapped[int] = mapped_column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), index=True, nullable=False)
+    original_order_item_id: Mapped[int] = mapped_column(Integer, ForeignKey("order_items.id", ondelete="CASCADE"), index=True, nullable=False)
+
+    destination_table_id: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    destination_seat_no: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="CONFIRMED", nullable=False)
+    created_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # Relationships
+    original_order: Mapped["Order"] = relationship("Order", back_populates="shared_dishes_sent")
+    original_order_item: Mapped["OrderItem"] = relationship("OrderItem", back_populates="shared_transactions")
+
+    def __repr__(self) -> str:
+        return f"<SharedDishTransaction id={self.id} order={self.original_order_id} item={self.original_order_item_id} dest={self.destination_table_id} qty={self.quantity}>"
+

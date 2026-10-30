@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "../context/AuthContext";
 import { getHealthStatus } from "../services/api";
+import { KpiSizeSelector } from "../context/KpiSizeContext";
 
 const ROUTE_TITLES = {
   "/admin": { title: "Admin Overview", subtitle: "Chai Flow Operations" },
@@ -56,7 +57,10 @@ function AdminHeaderContent({
       style={{
         background: "#FFFFFF",
         borderBottom: "1px solid var(--border-subtle)",
-        padding: "16px 24px",
+        padding: "12px 24px",
+        height: "68px",
+        minHeight: "68px",
+        boxSizing: "border-box",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
@@ -119,8 +123,10 @@ function AdminHeaderContent({
         </div>
       </div>
 
-      {/* Right side: Health indicator, Refresh button & Admin Profile */}
-      <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+      {/* Right side: KPI Size Selector, Health indicator, Refresh button & Admin Profile */}
+      <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+        {/* KPI Card Size Selector (Compact, Standard, Comfortable) */}
+        <KpiSizeSelector />
         {/* System Health Pulse */}
         <div
           style={{
@@ -296,11 +302,16 @@ export default function AdminHeader(props) {
           style={{
             background: "#FFFFFF",
             borderBottom: "1px solid var(--border-subtle)",
-            padding: "16px 24px",
+            padding: "12px 24px",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            minHeight: "70px",
+            minHeight: "68px",
+            height: "68px",
+            boxSizing: "border-box",
+            position: "sticky",
+            top: 0,
+            zIndex: 35,
           }}
         />
       }

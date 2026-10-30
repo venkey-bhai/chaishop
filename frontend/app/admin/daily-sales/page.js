@@ -2,9 +2,15 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useAuth } from "../../../context/AuthContext";
 import { getDailySalesReport, getBillReceipt } from "../../../services/api";
+import { printThermalBill, printExpenseThermalVoucher } from "../../../utils/thermalPrinter";
 
 export default function DailySalesReportPage() {
   const { getValidAdminToken } = useAuth();
+
+  const fmt = (val) => {
+    const num = Number(val);
+    return isNaN(num) ? "0.00" : num.toFixed(2);
+  };
 
   // Selected date state (defaults to today in local YYYY-MM-DD format)
   const [selectedDate, setSelectedDate] = useState(() => {
@@ -31,6 +37,8 @@ export default function DailySalesReportPage() {
 
   // Receipt Modal State
   const [activeReceipt, setActiveReceipt] = useState(null);
+  const [activeExpenseVoucher, setActiveExpenseVoucher] = useState(null);
+  const [paperWidth, setPaperWidth] = useState("80mm"); // "80mm" | "58mm"
 
   // Load report data
   async function fetchReport(dateToFetch = selectedDate) {
@@ -260,7 +268,8 @@ export default function DailySalesReportPage() {
 
   return (
     <div className="daily-sales-container" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      {/* 1. Header & Date Controller */}
+      <div className={`daily-sales-main-report ${activeReceipt ? "hide-on-receipt-print" : ""}`} style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+        {/* 1. Header & Date Controller */}
       <div
         className="card no-print"
         style={{
@@ -416,8 +425,9 @@ export default function DailySalesReportPage() {
         </div>
       )}
 
-      {/* 2. Top Executive Summary Cards (Section 2) */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
+      {/* 2. Top Executive Summary Cards (Section 2) - Sticky & Adaptive */}
+      <div className="sticky-kpi-container">
+        <div className="kpi-grid">
         {/* Card 1: Total Sales */}
         <div
           className="card"
@@ -434,7 +444,7 @@ export default function DailySalesReportPage() {
             <span style={{ fontSize: "1.2rem" }}>☕</span>
           </div>
           <div style={{ fontSize: "1.85rem", fontWeight: "900", color: "#0F766E", marginTop: "8px" }}>
-            ₹{summary.total_sales.toFixed(2)}
+            ₹{fmt(summary.total_sales)}
           </div>
           <div style={{ fontSize: "0.76rem", color: "var(--text-dim)", marginTop: "4px" }}>
             {summary.total_orders_count} valid orders ({summary.completed_orders_count} fulfilled)
@@ -457,10 +467,10 @@ export default function DailySalesReportPage() {
             <span style={{ fontSize: "1.2rem" }}>💰</span>
           </div>
           <div style={{ fontSize: "1.85rem", fontWeight: "900", color: "#16A34A", marginTop: "8px" }}>
-            ₹{summary.total_payments_received.toFixed(2)}
+            ₹{fmt(summary.total_payments_received)}
           </div>
           <div style={{ fontSize: "0.76rem", color: "var(--text-dim)", marginTop: "4px" }}>
-            Cash ₹{summary.cash_received} • UPI ₹{summary.upi_received} • Card ₹{summary.card_received}
+            Cash ₹{fmt(summary.cash_received)} • UPI ₹{fmt(summary.upi_received)} • Card ₹{fmt(summary.card_received)}
           </div>
         </div>
 
@@ -480,7 +490,7 @@ export default function DailySalesReportPage() {
             <span style={{ fontSize: "1.2rem" }}>📉</span>
           </div>
           <div style={{ fontSize: "1.85rem", fontWeight: "900", color: "#DC2626", marginTop: "8px" }}>
-            ₹{summary.total_expenses.toFixed(2)}
+            ₹{fmt(summary.total_expenses)}
           </div>
           <div style={{ fontSize: "0.76rem", color: "var(--text-dim)", marginTop: "4px" }}>
             {reportData?.expenses?.length || 0} recorded outlays
@@ -492,7 +502,7 @@ export default function DailySalesReportPage() {
           className="card"
           style={{
             padding: "18px 20px",
-            borderLeft: `5px solid ${summary.net_cash_flow >= 0 ? "#0284C7" : "#E11D48"}`,
+            borderLeft: `5px solid ${Number(summary.net_cash_flow) >= 0 ? "#0284C7" : "#E11D48"}`,
             boxShadow: "var(--shadow-card)",
           }}
         >
@@ -506,17 +516,18 @@ export default function DailySalesReportPage() {
             style={{
               fontSize: "1.85rem",
               fontWeight: "900",
-              color: summary.net_cash_flow >= 0 ? "#0284C7" : "#E11D48",
+              color: Number(summary.net_cash_flow) >= 0 ? "#0284C7" : "#E11D48",
               marginTop: "8px",
             }}
           >
-            {summary.net_cash_flow >= 0 ? "+" : ""}₹{summary.net_cash_flow.toFixed(2)}
+            {Number(summary.net_cash_flow) >= 0 ? "+" : ""}₹{fmt(summary.net_cash_flow)}
           </div>
           <div style={{ fontSize: "0.76rem", color: "var(--text-dim)", marginTop: "4px" }}>
-            Payments In (₹{summary.total_payments_received}) - Expenses (₹{summary.total_expenses})
+            Payments In (₹{fmt(summary.total_payments_received)}) - Expenses (₹{fmt(summary.total_expenses)})
           </div>
         </div>
       </div>
+    </div>
 
       {/* Secondary Detailed Financial Badges Bar */}
       <div
@@ -535,36 +546,36 @@ export default function DailySalesReportPage() {
         <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
           <div>
             <span style={{ color: "var(--text-muted)" }}>💵 Cash Collected: </span>
-            <strong style={{ color: "var(--text-main)" }}>₹{summary.cash_received.toFixed(2)}</strong>
+            <strong style={{ color: "var(--text-main)" }}>₹{fmt(summary.cash_received)}</strong>
           </div>
           <div>
             <span style={{ color: "var(--text-muted)" }}>📱 UPI Collected: </span>
-            <strong style={{ color: "var(--text-main)" }}>₹{summary.upi_received.toFixed(2)}</strong>
+            <strong style={{ color: "var(--text-main)" }}>₹{fmt(summary.upi_received)}</strong>
           </div>
           <div>
             <span style={{ color: "var(--text-muted)" }}>💳 Card Collected: </span>
-            <strong style={{ color: "var(--text-main)" }}>₹{summary.card_received.toFixed(2)}</strong>
+            <strong style={{ color: "var(--text-main)" }}>₹{fmt(summary.card_received)}</strong>
           </div>
           <div>
             <span style={{ color: "var(--text-muted)" }}>📝 Credit Sales (Khata): </span>
-            <strong style={{ color: "#D97706" }}>₹{summary.credit_sales.toFixed(2)}</strong>
+            <strong style={{ color: "#D97706" }}>₹{fmt(summary.credit_sales)}</strong>
           </div>
           <div>
             <span style={{ color: "var(--text-muted)" }}>📥 Debt Repayments Collected: </span>
-            <strong style={{ color: "#16A34A" }}>₹{summary.credit_payments_collected.toFixed(2)}</strong>
+            <strong style={{ color: "#16A34A" }}>₹{fmt(summary.credit_payments_collected)}</strong>
           </div>
         </div>
 
         <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
           <div>
             <span style={{ color: "var(--text-muted)" }}>📊 Operating Surplus: </span>
-            <strong style={{ color: summary.operating_surplus >= 0 ? "#0F766E" : "#DC2626" }}>
-              ₹{summary.operating_surplus.toFixed(2)}
+            <strong style={{ color: Number(summary.operating_surplus) >= 0 ? "#0F766E" : "#DC2626" }}>
+              ₹{fmt(summary.operating_surplus)}
             </strong>
           </div>
           <div>
             <span style={{ color: "var(--text-muted)" }}>⚠️ Total Outstanding Credit: </span>
-            <strong style={{ color: "#B45309" }}>₹{summary.total_outstanding_credit.toFixed(2)}</strong>
+            <strong style={{ color: "#B45309" }}>₹{fmt(summary.total_outstanding_credit)}</strong>
           </div>
         </div>
       </div>
@@ -730,7 +741,7 @@ export default function DailySalesReportPage() {
                   </span>
                 </div>
                 <div style={{ fontSize: "0.85rem", fontWeight: "700", color: "var(--color-primary)" }}>
-                  Filtered Total: ₹{filteredOrders.reduce((sum, o) => o.order_status !== "CANCELLED" ? sum + o.total_amount : sum, 0).toFixed(2)}
+                  Filtered Total: ₹{fmt(filteredOrders.reduce((sum, o) => o.order_status !== "CANCELLED" ? sum + (Number(o.total_amount) || 0) : sum, 0))}
                 </div>
               </div>
 
@@ -740,8 +751,8 @@ export default function DailySalesReportPage() {
                 </div>
               ) : viewMode === "grouped" ? (
                 /* Grouped Mode */
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "0.84rem" }}>
+                <div className="table-container">
+                  <table className="sticky-table-header" style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, textAlign: "left", fontSize: "0.84rem" }}>
                     <thead>
                       <tr style={{ background: "#F8FAFC", borderBottom: "2px solid var(--border-subtle)", color: "var(--text-muted)", fontSize: "0.78rem", textTransform: "uppercase" }}>
                         <th style={{ padding: "12px 14px" }}>Bill / Token</th>
@@ -812,12 +823,12 @@ export default function DailySalesReportPage() {
 
                               {/* Bill Total */}
                               <td style={{ padding: "12px 14px", textAlign: "right", fontWeight: "800", color: isCancelled ? "var(--text-dim)" : "var(--text-main)" }}>
-                                {isCancelled ? <s>₹{ord.total_amount.toFixed(2)}</s> : `₹${ord.total_amount.toFixed(2)}`}
+                                {isCancelled ? <s>₹{fmt(ord.total_amount)}</s> : `₹${fmt(ord.total_amount)}`}
                               </td>
 
                               {/* Amount Paid */}
-                              <td style={{ padding: "12px 14px", textAlign: "right", fontWeight: "700", color: ord.amount_paid > 0 ? "var(--status-success)" : "var(--text-dim)" }}>
-                                ₹{ord.amount_paid.toFixed(2)}
+                              <td style={{ padding: "12px 14px", textAlign: "right", fontWeight: "700", color: Number(ord.amount_paid) > 0 ? "var(--status-success)" : "var(--text-dim)" }}>
+                                ₹{fmt(ord.amount_paid)}
                               </td>
 
                               {/* Method */}
@@ -851,8 +862,8 @@ export default function DailySalesReportPage() {
                               </td>
 
                               {/* Credit Amount */}
-                              <td style={{ padding: "12px 14px", textAlign: "right", color: ord.credit_amount > 0 ? "#B45309" : "var(--text-dim)", fontWeight: ord.credit_amount > 0 ? "700" : "normal" }}>
-                                {ord.credit_amount > 0 ? `₹${ord.credit_amount.toFixed(2)}` : "-"}
+                              <td style={{ padding: "12px 14px", textAlign: "right", color: Number(ord.credit_amount) > 0 ? "#B45309" : "var(--text-dim)", fontWeight: Number(ord.credit_amount) > 0 ? "700" : "normal" }}>
+                                {Number(ord.credit_amount) > 0 ? `₹${fmt(ord.credit_amount)}` : "-"}
                               </td>
 
                               {/* Order Status */}
@@ -926,10 +937,10 @@ export default function DailySalesReportPage() {
                                               {it.quantity}x
                                             </td>
                                             <td style={{ padding: "6px 8px", textAlign: "right", color: "var(--text-muted)" }}>
-                                              ₹{it.unit_price.toFixed(2)}
+                                              ₹{fmt(it.unit_price)}
                                             </td>
                                             <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: "700", color: "var(--text-main)" }}>
-                                              ₹{it.total_price.toFixed(2)}
+                                              ₹{fmt(it.total_price)}
                                             </td>
                                             <td style={{ padding: "6px 8px" }}>
                                               {(it.sugar || it.strength) ? (
@@ -957,8 +968,8 @@ export default function DailySalesReportPage() {
                 </div>
               ) : (
                 /* Flat Line-by-Line Mode */
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "0.82rem" }}>
+                <div className="table-container">
+                  <table className="sticky-table-header" style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, textAlign: "left", fontSize: "0.82rem" }}>
                     <thead>
                       <tr style={{ background: "#F8FAFC", borderBottom: "2px solid var(--border-subtle)", color: "var(--text-muted)", fontSize: "0.76rem", textTransform: "uppercase" }}>
                         <th style={{ padding: "10px 12px" }}>Bill #</th>
@@ -992,10 +1003,10 @@ export default function DailySalesReportPage() {
                               )}
                             </td>
                             <td style={{ padding: "8px 12px", textAlign: "center", fontWeight: "700" }}>{it.quantity}</td>
-                            <td style={{ padding: "8px 12px", textAlign: "right", color: "var(--text-muted)" }}>₹{it.unit_price.toFixed(2)}</td>
-                            <td style={{ padding: "8px 12px", textAlign: "right", fontWeight: "700", color: "var(--text-main)" }}>₹{it.total_price.toFixed(2)}</td>
+                            <td style={{ padding: "8px 12px", textAlign: "right", color: "var(--text-muted)" }}>₹{fmt(it.unit_price)}</td>
+                            <td style={{ padding: "8px 12px", textAlign: "right", fontWeight: "700", color: "var(--text-main)" }}>₹{fmt(it.total_price)}</td>
                             <td style={{ padding: "8px 12px", textAlign: "right", color: "var(--text-dim)" }}>
-                              {itemIdx === 0 ? <strong>₹{ord.total_amount.toFixed(2)}</strong> : "—"}
+                              {itemIdx === 0 ? <strong>₹{fmt(ord.total_amount)}</strong> : "—"}
                             </td>
                             <td style={{ padding: "8px 12px" }}>{ord.payment_method}</td>
                             <td style={{ padding: "8px 12px" }}>{ord.order_status}</td>
@@ -1022,7 +1033,7 @@ export default function DailySalesReportPage() {
                   </span>
                 </div>
                 <div style={{ fontSize: "0.95rem", fontWeight: "800", color: "var(--status-success)" }}>
-                  Total Collected: ₹{filteredPayments.reduce((sum, p) => sum + p.amount, 0).toFixed(2)}
+                  Total Collected: ₹{fmt(filteredPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0))}
                 </div>
               </div>
 
@@ -1031,8 +1042,8 @@ export default function DailySalesReportPage() {
                   No payment collections recorded on {selectedDate}.
                 </div>
               ) : (
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "0.85rem" }}>
+                <div className="table-container">
+                  <table className="sticky-table-header" style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, textAlign: "left", fontSize: "0.85rem" }}>
                     <thead>
                       <tr style={{ background: "#F8FAFC", borderBottom: "2px solid var(--border-subtle)", color: "var(--text-muted)", fontSize: "0.78rem", textTransform: "uppercase" }}>
                         <th style={{ padding: "12px 14px" }}>Tx ID</th>
@@ -1092,7 +1103,7 @@ export default function DailySalesReportPage() {
                               </span>
                             </td>
                             <td style={{ padding: "12px 14px", textAlign: "right", fontWeight: "800", color: "var(--status-success)" }}>
-                              ₹{p.amount.toFixed(2)}
+                              ₹{fmt(p.amount)}
                             </td>
                             <td style={{ padding: "12px 14px", fontSize: "0.8rem", color: "var(--text-dim)", wordBreak: "break-all" }}>
                               {p.transaction_reference || "Counter Auto"}
@@ -1125,7 +1136,7 @@ export default function DailySalesReportPage() {
                   </span>
                 </div>
                 <div style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
-                  New Credit: <strong style={{ color: "#D97706" }}>₹{summary.credit_sales.toFixed(2)}</strong> | Cleared: <strong style={{ color: "#16A34A" }}>₹{summary.credit_payments_collected.toFixed(2)}</strong>
+                  New Credit: <strong style={{ color: "#D97706" }}>₹{fmt(summary.credit_sales)}</strong> | Cleared: <strong style={{ color: "#16A34A" }}>₹{fmt(summary.credit_payments_collected)}</strong>
                 </div>
               </div>
 
@@ -1134,8 +1145,8 @@ export default function DailySalesReportPage() {
                   No customer credit transactions on {selectedDate}.
                 </div>
               ) : (
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "0.85rem" }}>
+                <div className="table-container">
+                  <table className="sticky-table-header" style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, textAlign: "left", fontSize: "0.85rem" }}>
                     <thead>
                       <tr style={{ background: "#F8FAFC", borderBottom: "2px solid var(--border-subtle)", color: "var(--text-muted)", fontSize: "0.78rem", textTransform: "uppercase" }}>
                         <th style={{ padding: "12px 14px" }}>Tx ID</th>
@@ -1178,13 +1189,13 @@ export default function DailySalesReportPage() {
                               </span>
                             </td>
                             <td style={{ padding: "12px 14px", textAlign: "right", fontWeight: "800", color: isCredit ? "#D97706" : "#16A34A" }}>
-                              {isCredit ? "+" : "-"}₹{ct.amount.toFixed(2)}
+                              {isCredit ? "+" : "-"}₹{fmt(ct.amount)}
                             </td>
                             <td style={{ padding: "12px 14px", textAlign: "right", fontWeight: "600", color: "var(--text-main)" }}>
-                              ₹{ct.balance_after.toFixed(2)}
+                              ₹{fmt(ct.balance_after)}
                             </td>
                             <td style={{ padding: "12px 14px", textAlign: "right", fontWeight: "700", color: "#B45309" }}>
-                              ₹{ct.current_balance.toFixed(2)}
+                              ₹{fmt(ct.current_balance)}
                             </td>
                             <td style={{ padding: "12px 14px", color: "var(--text-muted)", fontSize: "0.8rem" }}>
                               {ct.description || "Credit ledger entry"}
@@ -1212,7 +1223,7 @@ export default function DailySalesReportPage() {
                   </span>
                 </div>
                 <div style={{ fontSize: "0.95rem", fontWeight: "800", color: "var(--status-err)" }}>
-                  Total Expenses: ₹{filteredExpenses.reduce((sum, e) => sum + e.amount, 0).toFixed(2)}
+                  Total Expenses: ₹{fmt(filteredExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0))}
                 </div>
               </div>
 
@@ -1221,8 +1232,8 @@ export default function DailySalesReportPage() {
                   No operational expenses recorded for {selectedDate}.
                 </div>
               ) : (
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "0.85rem" }}>
+                <div className="table-container">
+                  <table className="sticky-table-header" style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, textAlign: "left", fontSize: "0.85rem" }}>
                     <thead>
                       <tr style={{ background: "#F8FAFC", borderBottom: "2px solid var(--border-subtle)", color: "var(--text-muted)", fontSize: "0.78rem", textTransform: "uppercase" }}>
                         <th style={{ padding: "12px 14px" }}>Expense ID</th>
@@ -1232,6 +1243,7 @@ export default function DailySalesReportPage() {
                         <th style={{ padding: "12px 14px" }}>Recorded By</th>
                         <th style={{ padding: "12px 14px", textAlign: "right" }}>Amount</th>
                         <th style={{ padding: "12px 14px" }}>Status</th>
+                        <th style={{ padding: "12px 14px", textAlign: "center" }} className="no-print">Voucher</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1257,12 +1269,21 @@ export default function DailySalesReportPage() {
                             {e.recorded_by}
                           </td>
                           <td style={{ padding: "12px 14px", textAlign: "right", fontWeight: "800", color: "var(--status-err)" }}>
-                            ₹{e.amount.toFixed(2)}
+                            ₹{fmt(e.amount)}
                           </td>
                           <td style={{ padding: "12px 14px" }}>
                             <span style={{ fontSize: "0.74rem", color: "#16A34A", fontWeight: "700" }}>
                               ✓ {e.status}
                             </span>
+                          </td>
+                          <td style={{ padding: "12px 14px", textAlign: "center" }} className="no-print">
+                            <button
+                              onClick={() => setActiveExpenseVoucher(e)}
+                              className="btn-secondary"
+                              style={{ fontSize: "0.74rem", padding: "4px 8px" }}
+                            >
+                              Voucher 🧾
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -1293,17 +1314,17 @@ export default function DailySalesReportPage() {
                     </h4>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px", fontSize: "0.86rem" }}>
                       <span style={{ color: "var(--text-muted)" }}>Total Eligible Sales (Goods Sold):</span>
-                      <strong style={{ color: "var(--text-main)" }}>+ ₹{summary.total_sales.toFixed(2)}</strong>
+                      <strong style={{ color: "var(--text-main)" }}>+ ₹{fmt(summary.total_sales)}</strong>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px", fontSize: "0.86rem" }}>
                       <span style={{ color: "var(--text-muted)" }}>Total Expenses Paid (Ingredients & Overhead):</span>
-                      <strong style={{ color: "var(--status-err)" }}>- ₹{summary.total_expenses.toFixed(2)}</strong>
+                      <strong style={{ color: "var(--status-err)" }}>- ₹{fmt(summary.total_expenses)}</strong>
                     </div>
                     <div style={{ height: "1px", background: "var(--border-subtle)", margin: "10px 0" }} />
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: "1rem", fontWeight: "800" }}>
                       <span style={{ color: "var(--text-main)" }}>Preliminary Operating Surplus:</span>
-                      <span style={{ color: summary.operating_surplus >= 0 ? "var(--color-primary)" : "var(--status-err)" }}>
-                        {summary.operating_surplus >= 0 ? "+" : ""}₹{summary.operating_surplus.toFixed(2)}
+                      <span style={{ color: Number(summary.operating_surplus) >= 0 ? "var(--color-primary)" : "var(--status-err)" }}>
+                        {Number(summary.operating_surplus) >= 0 ? "+" : ""}₹{fmt(summary.operating_surplus)}
                       </span>
                     </div>
                     <p style={{ fontSize: "0.72rem", color: "var(--text-dim)", marginTop: "8px", fontStyle: "italic" }}>
@@ -1318,25 +1339,25 @@ export default function DailySalesReportPage() {
                     </h4>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px", fontSize: "0.86rem" }}>
                       <span style={{ color: "var(--text-muted)" }}>Immediate Counter Sales Received:</span>
-                      <strong style={{ color: "var(--text-main)" }}>+ ₹{(summary.total_payments_received - summary.credit_payments_collected).toFixed(2)}</strong>
+                      <strong style={{ color: "var(--text-main)" }}>+ ₹{fmt((Number(summary.total_payments_received) || 0) - (Number(summary.credit_payments_collected) || 0))}</strong>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px", fontSize: "0.86rem" }}>
                       <span style={{ color: "var(--text-muted)" }}>Old Credit Debt Repayments Collected:</span>
-                      <strong style={{ color: "#16A34A" }}>+ ₹{summary.credit_payments_collected.toFixed(2)}</strong>
+                      <strong style={{ color: "#16A34A" }}>+ ₹{fmt(summary.credit_payments_collected)}</strong>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px", fontSize: "0.86rem" }}>
                       <span style={{ color: "var(--text-muted)" }}>Total Cash/UPI/Card Money Received:</span>
-                      <strong style={{ color: "var(--status-success)" }}>= ₹{summary.total_payments_received.toFixed(2)}</strong>
+                      <strong style={{ color: "var(--status-success)" }}>= ₹{fmt(summary.total_payments_received)}</strong>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px", fontSize: "0.86rem" }}>
                       <span style={{ color: "var(--text-muted)" }}>Total Expenses Paid Out:</span>
-                      <strong style={{ color: "var(--status-err)" }}>- ₹{summary.total_expenses.toFixed(2)}</strong>
+                      <strong style={{ color: "var(--status-err)" }}>- ₹{fmt(summary.total_expenses)}</strong>
                     </div>
                     <div style={{ height: "1px", background: "var(--border-subtle)", margin: "10px 0" }} />
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: "1rem", fontWeight: "800" }}>
                       <span style={{ color: "var(--text-main)" }}>Net Liquid Cash Flow:</span>
-                      <span style={{ color: summary.net_cash_flow >= 0 ? "#0284C7" : "var(--status-err)" }}>
-                        {summary.net_cash_flow >= 0 ? "+" : ""}₹{summary.net_cash_flow.toFixed(2)}
+                      <span style={{ color: Number(summary.net_cash_flow) >= 0 ? "#0284C7" : "var(--status-err)" }}>
+                        {Number(summary.net_cash_flow) >= 0 ? "+" : ""}₹{fmt(summary.net_cash_flow)}
                       </span>
                     </div>
                     <p style={{ fontSize: "0.72rem", color: "var(--text-dim)", marginTop: "8px", fontStyle: "italic" }}>
@@ -1372,83 +1393,386 @@ export default function DailySalesReportPage() {
           )}
         </>
       )}
+      </div>
 
-      {/* Bill Receipt Modal */}
+      {/* Bill Receipt Modal (80mm / 58mm POS Print) */}
       {activeReceipt && (
         <div
-          className="no-print"
+          data-thermal-receipt-backdrop="true"
+          className="receipt-modal-backdrop"
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(15, 23, 42, 0.45)",
+            background: "rgba(15, 23, 42, 0.55)",
             backdropFilter: "blur(4px)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             zIndex: 60,
-            padding: "20px",
+            padding: "16px",
           }}
         >
-          <div className="card" style={{ maxWidth: "420px", width: "100%", padding: "24px", textAlign: "left", boxShadow: "var(--shadow-modal)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <h3 style={{ fontSize: "1.1rem", fontWeight: "700", color: "var(--text-main)" }}>
-                Thermal Bill Receipt
-              </h3>
+          <div
+            data-thermal-receipt="true"
+            className="card receipt-card-container"
+            style={{
+              maxWidth: paperWidth === "58mm" ? "340px" : "400px",
+              width: "100%",
+              padding: "20px",
+              textAlign: "left",
+              boxShadow: "var(--shadow-modal)",
+              borderRadius: "12px",
+            }}
+          >
+            {/* Modal Bar */}
+            <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <h3 style={{ fontSize: "1rem", fontWeight: "800", color: "var(--text-main)", margin: 0 }}>
+                  Thermal Receipt Preview
+                </h3>
+                <select
+                  value={paperWidth}
+                  onChange={(e) => setPaperWidth(e.target.value)}
+                  style={{ fontSize: "0.74rem", padding: "2px 6px", borderRadius: "4px", border: "1px solid var(--border-subtle)", background: "#FFF" }}
+                  title="Choose Thermal Roll Paper Size"
+                >
+                  <option value="80mm">80mm Roll</option>
+                  <option value="58mm">58mm Roll</option>
+                </select>
+              </div>
               <button
                 onClick={() => setActiveReceipt(null)}
-                style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: "1.2rem", color: "var(--text-muted)" }}
+                style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: "1.2rem", color: "var(--text-muted)", padding: "4px" }}
               >
                 ✕
               </button>
             </div>
 
+            {/* Printable Thermal Slip */}
             <div
+              className="receipt-slip-printable"
               style={{
-                fontFamily: "monospace",
-                background: "#F8FAFC",
+                fontFamily: "'Courier New', Courier, monospace",
+                background: "#FFFFFF",
                 border: "1px solid var(--border-subtle)",
                 borderRadius: "8px",
-                padding: "14px",
-                fontSize: "0.78rem",
-                lineHeight: "1.5",
-                whiteSpace: "pre-wrap",
-                color: "#1E293B",
-                maxHeight: "360px",
-                overflowY: "auto",
+                padding: "16px 14px",
+                fontSize: paperWidth === "58mm" ? "0.72rem" : "0.78rem",
+                lineHeight: "1.35",
+                color: "#000000",
+                boxSizing: "border-box",
+                width: "100%",
               }}
             >
-              <div style={{ textAlign: "center", fontWeight: "bold" }}>{activeReceipt.shop_name}</div>
-              <div style={{ textAlign: "center", fontSize: "0.72rem" }}>{activeReceipt.shop_address}</div>
-              <div style={{ textAlign: "center", fontSize: "0.72rem" }}>Phone: {activeReceipt.shop_phone}</div>
-              <div style={{ borderTop: "1px dashed #94A3B8", margin: "8px 0" }} />
-              <div>Token: #{activeReceipt.daily_token_number} | {activeReceipt.order_number}</div>
-              <div>Date: {new Date(activeReceipt.order_time).toLocaleString()}</div>
-              <div>Customer: {activeReceipt.customer_name}</div>
-              <div style={{ borderTop: "1px dashed #94A3B8", margin: "8px 0" }} />
-              {activeReceipt.items?.map((it, idx) => (
-                <div key={idx} style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span>{it.quantity}x {it.name}</span>
-                  <span>₹{it.total_price.toFixed(2)}</span>
+              <div style={{ textAlign: "center", fontWeight: "900", fontSize: paperWidth === "58mm" ? "0.95rem" : "1.05rem", letterSpacing: "0.5px" }}>
+                {activeReceipt.shop_name || "ChaiFlow Tea Shop"}
+              </div>
+              <div style={{ textAlign: "center", fontSize: "0.72rem", color: "#333", marginTop: "1px" }}>
+                {activeReceipt.tagline || "Authentic Spiced Chai & Irani Cafe Favorites"}
+              </div>
+              <div style={{ textAlign: "center", fontSize: "0.68rem", color: "#555", marginTop: "1px" }}>
+                {activeReceipt.shop_address || activeReceipt.address || "12 Market Square, Station Road"}
+              </div>
+              {(activeReceipt.shop_phone || activeReceipt.phone) && (
+                <div style={{ textAlign: "center", fontSize: "0.68rem", color: "#555" }}>
+                  Phone: {activeReceipt.shop_phone || activeReceipt.phone}
                 </div>
-              ))}
-              <div style={{ borderTop: "1px dashed #94A3B8", margin: "8px 0" }} />
-              <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold" }}>
-                <span>Total:</span>
-                <span>₹{activeReceipt.total_amount.toFixed(2)}</span>
+              )}
+              {activeReceipt.fssai_license && (
+                <div style={{ textAlign: "center", fontSize: "0.65rem", color: "#666" }}>
+                  FSSAI: {activeReceipt.fssai_license}
+                </div>
+              )}
+
+              {/* Token Banner */}
+              <div
+                style={{
+                  textAlign: "center",
+                  background: "#F1F5F9",
+                  border: "1px solid #E2E8F0",
+                  padding: "5px",
+                  borderRadius: "6px",
+                  fontWeight: "900",
+                  fontSize: paperWidth === "58mm" ? "1rem" : "1.15rem",
+                  margin: "8px 0",
+                  letterSpacing: "0.5px",
+                }}
+              >
+                TOKEN #{activeReceipt.daily_token_number}
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span>Method:</span>
-                <span>{activeReceipt.payment_method}</span>
+
+              <div style={{ borderTop: "1px dashed #64748B", margin: "6px 0" }} />
+
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", marginBottom: "2px" }}>
+                <span>Order: <strong>{activeReceipt.order_number}</strong></span>
+                <span style={{ flexShrink: 0, textAlign: "right" }}>
+                  {activeReceipt.date_time || (activeReceipt.order_time ? new Date(activeReceipt.order_time).toLocaleString("en-IN") : "")}
+                </span>
               </div>
-              <div style={{ borderTop: "1px dashed #94A3B8", margin: "8px 0" }} />
-              <div style={{ textAlign: "center", fontStyle: "italic" }}>{activeReceipt.footer_message}</div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem" }}>
+                <span>Customer: <strong>{activeReceipt.customer_name || "Guest"}</strong></span>
+                <span>{activeReceipt.table_or_counter || (activeReceipt.seat_number ? `Seat ${activeReceipt.seat_number}` : (activeReceipt.table_number ? `Table ${activeReceipt.table_number}` : "Counter"))}</span>
+              </div>
+
+              <div style={{ borderTop: "1px dashed #64748B", margin: "6px 0" }} />
+
+              {/* Items Column Header */}
+              <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "900", fontSize: "0.72rem", borderBottom: "1px solid #000", paddingBottom: "2px", marginBottom: "4px" }}>
+                <span style={{ flex: 1.5, textAlign: "left" }}>ITEM</span>
+                <span style={{ flexShrink: 0, textAlign: "center", minWidth: "55px" }}>QTY × RATE</span>
+                <span style={{ flexShrink: 0, textAlign: "right", minWidth: "55px" }}>AMOUNT</span>
+              </div>
+
+              {/* Line Items */}
+              {activeReceipt.items?.map((it, idx) => {
+                const itemTotal = it.total_price != null
+                  ? Number(it.total_price)
+                  : (it.total != null ? Number(it.total) : (Number(it.unit_price || 0) * Number(it.quantity || 1)));
+                const unitPrice = it.unit_price != null
+                  ? Number(it.unit_price)
+                  : (it.quantity ? (itemTotal / it.quantity) : itemTotal);
+                return (
+                  <div key={idx} style={{ marginBottom: "4px", width: "100%", boxSizing: "border-box" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", width: "100%" }}>
+                      <span style={{ flex: 1.5, minWidth: 0, textAlign: "left", paddingRight: "4px", fontWeight: "700", wordBreak: "break-word" }}>
+                        {it.name || it.item_name}
+                      </span>
+                      <span style={{ flexShrink: 0, textAlign: "center", color: "#333", minWidth: "55px", whiteSpace: "nowrap" }}>
+                        {it.quantity} × ₹{unitPrice.toFixed(2)}
+                      </span>
+                      <span style={{ flexShrink: 0, textAlign: "right", fontWeight: "800", minWidth: "55px", whiteSpace: "nowrap" }}>
+                        ₹{itemTotal.toFixed(2)}
+                      </span>
+                    </div>
+                    {it.customizations && (
+                      <div style={{ fontSize: "0.65rem", color: "#555", fontStyle: "italic", paddingLeft: "2px" }}>
+                        {it.customizations}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              <div style={{ borderTop: "1px dashed #64748B", margin: "6px 0" }} />
+
+              {/* Net Total */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: "900", fontSize: paperWidth === "58mm" ? "0.95rem" : "1.05rem", margin: "3px 0" }}>
+                <span>NET TOTAL:</span>
+                <span style={{ flexShrink: 0, whiteSpace: "nowrap", textAlign: "right" }}>
+                  ₹{Number(activeReceipt.total_amount || 0).toFixed(2)}
+                </span>
+              </div>
+
+              {/* Payment Details */}
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", marginTop: "3px" }}>
+                <span>Payment Mode:</span>
+                <span style={{ flexShrink: 0, fontWeight: "700" }}>
+                  {(activeReceipt.payment_method || "CASH")
+                    .replace(/^PaymentMethod\./i, "")
+                    .replace(/^PaymentRecordMethod\./i, "")}{" "}
+                  (
+                  {(activeReceipt.payment_status || "PAID")
+                    .replace(/^PaymentStatus\./i, "")
+                    .replace(/^PaymentRecordStatus\./i, "")}
+                  )
+                </span>
+              </div>
+              {activeReceipt.transaction_reference && (
+                <div style={{ fontSize: "0.68rem", color: "#555", marginTop: "2px" }}>
+                  Ref: {activeReceipt.transaction_reference}
+                </div>
+              )}
+
+              <div style={{ borderTop: "1px dashed #64748B", margin: "6px 0" }} />
+
+              {/* Footer */}
+              <div style={{ textAlign: "center", fontStyle: "italic", fontSize: "0.7rem", color: "#444", marginTop: "4px", wordBreak: "break-word" }}>
+                {activeReceipt.footer_message || "Thank you for visiting ChaiFlow! Please come again."}
+              </div>
             </div>
 
-            <div style={{ display: "flex", gap: "10px", marginTop: "16px" }}>
-              <button onClick={() => window.print()} className="btn-primary" style={{ flex: 1, padding: "10px" }}>
-                🖨️ Print Receipt
+            {/* Action Buttons */}
+            <div className="no-print" style={{ display: "flex", gap: "8px", marginTop: "14px" }}>
+              <button
+                onClick={() => printThermalBill(activeReceipt, { paperWidth })}
+                className="btn-primary"
+                style={{ flex: 1, padding: "10px", fontWeight: "700", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
+              >
+                🖨️ Print Receipt ({paperWidth})
               </button>
-              <button onClick={() => setActiveReceipt(null)} className="btn-secondary" style={{ flex: 1, padding: "10px" }}>
+              <button
+                onClick={() => setActiveReceipt(null)}
+                className="btn-secondary"
+                style={{ padding: "10px 18px", fontWeight: "600" }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Expense Voucher Modal (80mm / 58mm Thermal Print) */}
+      {activeExpenseVoucher && (
+        <div
+          data-thermal-receipt-backdrop="true"
+          className="receipt-modal-backdrop"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.55)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 60,
+            padding: "16px",
+          }}
+        >
+          <div
+            data-thermal-receipt="true"
+            className="card receipt-card-container"
+            style={{
+              maxWidth: paperWidth === "58mm" ? "340px" : "400px",
+              width: "100%",
+              padding: "20px",
+              textAlign: "left",
+              boxShadow: "var(--shadow-modal)",
+              borderRadius: "12px",
+            }}
+          >
+            {/* Modal Bar */}
+            <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <h3 style={{ fontSize: "1rem", fontWeight: "800", color: "var(--text-main)", margin: 0 }}>
+                  Expense Voucher Preview
+                </h3>
+                <select
+                  value={paperWidth}
+                  onChange={(e) => setPaperWidth(e.target.value)}
+                  style={{ fontSize: "0.74rem", padding: "2px 6px", borderRadius: "4px", border: "1px solid var(--border-subtle)", background: "#FFF" }}
+                  title="Choose Thermal Roll Paper Size"
+                >
+                  <option value="80mm">80mm Roll</option>
+                  <option value="58mm">58mm Roll</option>
+                </select>
+              </div>
+              <button
+                onClick={() => setActiveExpenseVoucher(null)}
+                style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: "1.2rem", color: "var(--text-muted)", padding: "4px" }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Printable Voucher Slip */}
+            <div
+              className="receipt-slip-printable"
+              style={{
+                fontFamily: "'Courier New', Courier, monospace",
+                background: "#FFFFFF",
+                border: "1px solid var(--border-subtle)",
+                borderRadius: "8px",
+                padding: "16px 14px",
+                fontSize: paperWidth === "58mm" ? "0.72rem" : "0.78rem",
+                lineHeight: "1.35",
+                color: "#000000",
+                boxSizing: "border-box",
+                width: "100%",
+              }}
+            >
+              <div style={{ textAlign: "center", fontWeight: "900", fontSize: paperWidth === "58mm" ? "0.95rem" : "1.05rem" }}>
+                ChaiFlow Tea Shop
+              </div>
+              <div style={{ textAlign: "center", fontSize: "0.68rem", color: "#555" }}>
+                PETTY CASH / STORE EXPENSE VOUCHER
+              </div>
+
+              <div
+                style={{
+                  textAlign: "center",
+                  background: "#F1F5F9",
+                  border: "1px solid #E2E8F0",
+                  padding: "5px",
+                  borderRadius: "6px",
+                  fontWeight: "900",
+                  fontSize: paperWidth === "58mm" ? "0.9rem" : "1rem",
+                  margin: "8px 0",
+                }}
+              >
+                EXPENSE VOUCHER #EXP-{activeExpenseVoucher.expense_id || activeExpenseVoucher.id}
+              </div>
+
+              <div style={{ borderTop: "1px dashed #64748B", margin: "6px 0" }} />
+
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", marginBottom: "2px" }}>
+                <span>Date: <strong>{activeExpenseVoucher.expense_date}</strong></span>
+                <span>Time: {new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", marginBottom: "2px" }}>
+                <span>Category:</span>
+                <strong>{activeExpenseVoucher.category}</strong>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", marginBottom: "2px" }}>
+                <span>Payment Mode:</span>
+                <strong>{String(activeExpenseVoucher.payment_method).replace(/^ExpensePaymentMethod\./i, "")}</strong>
+              </div>
+              {activeExpenseVoucher.recorded_by && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem" }}>
+                  <span>Recorded By:</span>
+                  <span>{activeExpenseVoucher.recorded_by}</span>
+                </div>
+              )}
+
+              <div style={{ borderTop: "1px dashed #64748B", margin: "6px 0" }} />
+
+              <div style={{ margin: "4px 0", fontSize: "0.72rem" }}>
+                <div style={{ fontWeight: "700" }}>Description / Vendor:</div>
+                <div style={{ marginTop: "2px", wordBreak: "break-word", fontStyle: "italic" }}>
+                  {activeExpenseVoucher.description}
+                </div>
+              </div>
+
+              <div style={{ borderTop: "1px dashed #64748B", margin: "6px 0" }} />
+
+              <div style={{ textAlign: "center", fontWeight: "900", fontSize: paperWidth === "58mm" ? "1rem" : "1.1rem", margin: "6px 0", padding: "4px", border: "1px solid #000" }}>
+                PAID AMOUNT: ₹{fmt(activeExpenseVoucher.amount)}
+              </div>
+
+              <div style={{ borderTop: "1px dashed #64748B", margin: "6px 0" }} />
+
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: "14px", fontSize: "0.68rem" }}>
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ borderTop: "1px solid #000", width: "80px", paddingTop: "2px" }}>
+                    Authorized By
+                  </div>
+                </div>
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ borderTop: "1px solid #000", width: "80px", paddingTop: "2px" }}>
+                    Receiver Sign
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ textAlign: "center", fontStyle: "italic", fontSize: "0.65rem", color: "#555", marginTop: "8px" }}>
+                Internal Accounting Voucher — Store Cash Drawer Record
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="no-print" style={{ display: "flex", gap: "8px", marginTop: "14px" }}>
+              <button
+                onClick={() => printExpenseThermalVoucher(activeExpenseVoucher, { paperWidth })}
+                className="btn-primary"
+                style={{ flex: 1, padding: "10px", fontWeight: "700" }}
+              >
+                🖨️ Print Voucher ({paperWidth})
+              </button>
+              <button
+                onClick={() => setActiveExpenseVoucher(null)}
+                className="btn-secondary"
+                style={{ padding: "10px 18px", fontWeight: "600" }}
+              >
                 Close
               </button>
             </div>
@@ -1468,12 +1792,9 @@ export default function DailySalesReportPage() {
           .no-print {
             display: none !important;
           }
-          .print-only {
-            display: block !important;
-          }
           .daily-sales-container {
             padding: 0 !important;
-            gap: 12px !important;
+            margin: 0 !important;
           }
           .card {
             border: 1px solid #CCC !important;

@@ -208,59 +208,43 @@ export default function ReportsPage() {
           </div>
 
           {/* Daily Breakdown Cards */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
-            <div className="card" style={{ padding: "18px" }}>
-              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: "600" }}>
-                Total Billed Sales
+          <div className="sticky-kpi-container">
+            <div className="kpi-grid">
+              <div className="card kpi-card">
+                <div className="kpi-card-title">Total Billed Sales</div>
+                <div className="kpi-card-value">₹{Number(dailyReport.total_sales || 0).toFixed(2)}</div>
+                <div className="kpi-card-sub">{dailyReport.completed_orders} orders completed</div>
               </div>
-              <div style={{ fontSize: "1.8rem", fontWeight: "800", color: "var(--text-main)", marginTop: "4px" }}>
-                ₹{Number(dailyReport.total_sales || 0).toFixed(2)}
-              </div>
-              <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginTop: "2px" }}>
-                {dailyReport.completed_orders} orders completed
-              </div>
-            </div>
 
-            <div className="card" style={{ padding: "18px" }}>
-              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: "600" }}>
-                Real Cash & Digital Inflow
+              <div className="card kpi-card">
+                <div className="kpi-card-title">Real Cash & Digital Inflow</div>
+                <div className="kpi-card-value" style={{ color: "var(--color-primary)" }}>
+                  ₹{Number(dailyReport.total_actual_inflow || 0).toFixed(2)}
+                </div>
+                <div className="kpi-card-sub">
+                  Cash ₹{Number(dailyReport.cash_collected || 0).toFixed(0)} + UPI ₹{Number(dailyReport.upi_collected || 0).toFixed(0)}
+                </div>
               </div>
-              <div style={{ fontSize: "1.8rem", fontWeight: "800", color: "var(--color-primary)", marginTop: "4px" }}>
-                ₹{Number(dailyReport.total_actual_inflow || 0).toFixed(2)}
-              </div>
-              <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginTop: "2px" }}>
-                Cash ₹{Number(dailyReport.cash_collected || 0).toFixed(0)} + UPI ₹{Number(dailyReport.upi_collected || 0).toFixed(0)}
-              </div>
-            </div>
 
-            <div className="card" style={{ padding: "18px" }}>
-              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: "600" }}>
-                Daily Expenses
+              <div className="card kpi-card">
+                <div className="kpi-card-title">Daily Expenses</div>
+                <div className="kpi-card-value" style={{ color: "var(--status-err)" }}>
+                  ₹{Number(dailyReport.total_expenses || 0).toFixed(2)}
+                </div>
+                <div className="kpi-card-sub">Operating outflows</div>
               </div>
-              <div style={{ fontSize: "1.8rem", fontWeight: "800", color: "var(--status-err)", marginTop: "4px" }}>
-                ₹{Number(dailyReport.total_expenses || 0).toFixed(2)}
-              </div>
-              <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginTop: "2px" }}>
-                Operating outflows
-              </div>
-            </div>
 
-            <div className="card" style={{ padding: "18px" }}>
-              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: "600" }}>
-                Net Operating Profit
-              </div>
-              <div
-                style={{
-                  fontSize: "1.8rem",
-                  fontWeight: "800",
-                  color: Number(dailyReport.net_profit || 0) >= 0 ? "var(--status-success)" : "var(--status-err)",
-                  marginTop: "4px",
-                }}
-              >
-                ₹{Number(dailyReport.net_profit || 0).toFixed(2)}
-              </div>
-              <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginTop: "2px" }}>
-                Margin: {dailyReport.gross_margin_percentage || 0}%
+              <div className="card kpi-card">
+                <div className="kpi-card-title">Net Operating Profit</div>
+                <div
+                  className="kpi-card-value"
+                  style={{
+                    color: Number(dailyReport.net_profit || 0) >= 0 ? "var(--status-success)" : "var(--status-err)",
+                  }}
+                >
+                  ₹{Number(dailyReport.net_profit || 0).toFixed(2)}
+                </div>
+                <div className="kpi-card-sub">Margin: {dailyReport.gross_margin_percentage || 0}%</div>
               </div>
             </div>
           </div>
@@ -396,8 +380,8 @@ export default function ReportsPage() {
               Tracked: <strong>{productReport.total_menu_items_tracked || 0}</strong> items | Units Sold: <strong>{productReport.total_products_sold || 0}</strong> cups
             </span>
           </div>
-          <div style={{ overflowX: "auto" }}>
-            <table>
+          <div className="table-container">
+            <table className="w-full text-left border-collapse sticky-table-header">
               <thead>
                 <tr>
                   <th style={{ width: "60px" }}>Rank</th>
@@ -451,47 +435,39 @@ export default function ReportsPage() {
       ) : activeTab === "credit" && creditReport ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           {/* Credit Risk Meter Row */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
-            <div className="card" style={{ padding: "18px" }}>
-              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: "600" }}>
-                Approved Credit Limit
+          <div className="sticky-kpi-container">
+            <div className="kpi-grid">
+              <div className="card kpi-card">
+                <div className="kpi-card-title">Approved Credit Limit</div>
+                <div className="kpi-card-value" style={{ color: "var(--color-primary)" }}>
+                  ₹{Number(creditReport.total_approved_limit || 0).toFixed(2)}
+                </div>
               </div>
-              <div style={{ fontSize: "1.6rem", fontWeight: "800", color: "var(--color-primary)", marginTop: "4px" }}>
-                ₹{Number(creditReport.total_approved_limit || 0).toFixed(2)}
-              </div>
-            </div>
 
-            <div className="card" style={{ padding: "18px" }}>
-              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: "600" }}>
-                Total Outstanding Debt
+              <div className="card kpi-card">
+                <div className="kpi-card-title">Total Outstanding Debt</div>
+                <div className="kpi-card-value" style={{ color: "var(--status-err)" }}>
+                  ₹{Number(creditReport.total_outstanding_debt || 0).toFixed(2)}
+                </div>
               </div>
-              <div style={{ fontSize: "1.6rem", fontWeight: "800", color: "var(--status-err)", marginTop: "4px" }}>
-                ₹{Number(creditReport.total_outstanding_debt || 0).toFixed(2)}
-              </div>
-            </div>
 
-            <div className="card" style={{ padding: "18px" }}>
-              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: "600" }}>
-                Available Headroom
+              <div className="card kpi-card">
+                <div className="kpi-card-title">Available Headroom</div>
+                <div className="kpi-card-value" style={{ color: "var(--status-success)" }}>
+                  ₹{Number(creditReport.total_available_credit || 0).toFixed(2)}
+                </div>
               </div>
-              <div style={{ fontSize: "1.6rem", fontWeight: "800", color: "var(--status-success)", marginTop: "4px" }}>
-                ₹{Number(creditReport.total_available_credit || 0).toFixed(2)}
-              </div>
-            </div>
 
-            <div className="card" style={{ padding: "18px" }}>
-              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: "600" }}>
-                High-Risk Accounts (≥80%)
-              </div>
-              <div
-                style={{
-                  fontSize: "1.6rem",
-                  fontWeight: "800",
-                  color: (creditReport.high_risk_customers_count || 0) > 0 ? "var(--status-err)" : "var(--status-success)",
-                  marginTop: "4px",
-                }}
-              >
-                {creditReport.high_risk_customers_count || 0} accounts
+              <div className="card kpi-card">
+                <div className="kpi-card-title">High-Risk Accounts (≥80%)</div>
+                <div
+                  className="kpi-card-value"
+                  style={{
+                    color: (creditReport.high_risk_customers_count || 0) > 0 ? "var(--status-err)" : "var(--status-success)",
+                  }}
+                >
+                  {creditReport.high_risk_customers_count || 0} accounts
+                </div>
               </div>
             </div>
           </div>
@@ -517,8 +493,8 @@ export default function ReportsPage() {
               />
             </div>
 
-            <div style={{ overflowX: "auto" }}>
-              <table>
+            <div className="table-container">
+              <table className="w-full text-left border-collapse sticky-table-header">
                 <thead>
                   <tr>
                     <th>Customer</th>
@@ -802,8 +778,8 @@ export default function ReportsPage() {
                   📈 Day-by-Day Monthly Trendline
                 </h4>
               </div>
-              <div style={{ overflowX: "auto" }}>
-                <table>
+              <div className="table-container">
+                <table className="w-full text-left border-collapse sticky-table-header">
                   <thead>
                     <tr>
                       <th>Date</th>

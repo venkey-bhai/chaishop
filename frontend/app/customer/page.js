@@ -728,6 +728,15 @@ function CustomerDashboardContent() {
                               <div style={{ fontSize: "0.74rem", color: "var(--text-dim)" }}>
                                 {tx.order_number || tx.id}
                               </div>
+                              {tx.order_type === "TAKEAWAY" ? (
+                                <span style={{ fontSize: "0.7rem", background: "#DCFCE7", color: "#15803D", padding: "1px 6px", borderRadius: "4px", fontWeight: "700", display: "inline-block", marginTop: "3px" }}>
+                                  🛍️ Takeaway
+                                </span>
+                              ) : (tx.table_number || tx.seat_number) ? (
+                                <span style={{ fontSize: "0.7rem", background: "#EFF6FF", color: "#2563EB", padding: "1px 6px", borderRadius: "4px", fontWeight: "700", display: "inline-block", marginTop: "3px" }}>
+                                  🍽️ Table #{tx.table_number || "—"}{tx.seat_number ? `, Seat #${tx.seat_number}` : ""}
+                                </span>
+                              ) : null}
                             </div>
                           )}
                         </td>

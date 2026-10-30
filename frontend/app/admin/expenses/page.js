@@ -8,6 +8,7 @@ import {
   createExpense,
   deleteExpense,
 } from "../../../services/api";
+import { printExpenseThermalVoucher } from "../../../utils/thermalPrinter";
 
 export default function ExpensesPage() {
   const { getValidAdminToken } = useAuth();
@@ -180,44 +181,49 @@ export default function ExpensesPage() {
         </div>
       )}
 
-      {/* Analytics KPI Summary */}
-      <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
-        <div className="card" style={{ padding: "18px" }}>
-          <div style={{ fontSize: "0.75rem", fontWeight: "600", color: "var(--text-muted)", textTransform: "uppercase" }}>
-            Total Recorded Expenses
+      {/* Analytics KPI Summary - Sticky & Adaptive */}
+      <div className="sticky-kpi-container">
+        <div className="kpi-grid">
+          <div className="kpi-card">
+            <div className="kpi-card-header">
+              <span className="kpi-card-title">Total Recorded Expenses</span>
+              <span className="kpi-card-icon">📉</span>
+            </div>
+            <div className="kpi-card-value" style={{ color: "var(--status-err)" }}>
+              ₹{totalAmount}
+            </div>
+            <div className="kpi-card-sub">
+              {totalCount} expense vouchers
+            </div>
           </div>
-          <div style={{ fontSize: "1.6rem", fontWeight: "800", color: "var(--status-err)", marginTop: "4px" }}>
-            ₹{totalAmount}
-          </div>
-          <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginTop: "2px" }}>
-            {totalCount} expense vouchers
-          </div>
-        </div>
 
-        <div className="card" style={{ padding: "18px" }}>
-          <div style={{ fontSize: "0.75rem", fontWeight: "600", color: "var(--text-muted)", textTransform: "uppercase" }}>
-            Today's Outlays
+          <div className="kpi-card">
+            <div className="kpi-card-header">
+              <span className="kpi-card-title">Today's Outlays</span>
+              <span className="kpi-card-icon">💸</span>
+            </div>
+            <div className="kpi-card-value">
+              ₹{analytics?.today_total ?? 0}
+            </div>
+            <div className="kpi-card-sub">
+              Daily cash expenditures
+            </div>
           </div>
-          <div style={{ fontSize: "1.6rem", fontWeight: "800", color: "var(--text-main)", marginTop: "4px" }}>
-            ₹{analytics?.today_total ?? 0}
-          </div>
-          <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginTop: "2px" }}>
-            Daily cash expenditures
-          </div>
-        </div>
 
-        <div className="card" style={{ padding: "18px" }}>
-          <div style={{ fontSize: "0.75rem", fontWeight: "600", color: "var(--text-muted)", textTransform: "uppercase" }}>
-            Top Expense Driver
-          </div>
-          <div style={{ fontSize: "1.3rem", fontWeight: "800", color: "var(--color-primary)", marginTop: "4px" }}>
-            {analytics?.top_category ? `${analytics.top_category.category}` : "None"}
-          </div>
-          <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginTop: "2px" }}>
-            ₹{analytics?.top_category?.total_amount ?? 0}
+          <div className="kpi-card">
+            <div className="kpi-card-header">
+              <span className="kpi-card-title">Top Expense Driver</span>
+              <span className="kpi-card-icon">📦</span>
+            </div>
+            <div className="kpi-card-value" style={{ color: "var(--color-primary)", fontSize: "1.15rem" }}>
+              {analytics?.top_category ? `${analytics.top_category.category}` : "None"}
+            </div>
+            <div className="kpi-card-sub">
+              ₹{analytics?.top_category?.total_amount ?? 0}
+            </div>
           </div>
         </div>
-      </section>
+      </div>
 
       {/* Filter and Search Bar */}
       <div className="card" style={{ padding: "16px 20px" }}>
@@ -269,8 +275,8 @@ export default function ExpensesPage() {
           </h3>
         </div>
 
-        <div style={{ overflowX: "auto" }}>
-          <table>
+        <div className="table-container">
+          <table className="sticky-table-header">
             <thead>
               <tr>
                 <th>Voucher #</th>
@@ -325,7 +331,24 @@ export default function ExpensesPage() {
                     <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
                       {exp.expense_date ? new Date(exp.expense_date).toLocaleDateString() : "-"}
                     </td>
-                    <td style={{ textAlign: "right" }}>
+                    <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                      <button
+                        onClick={() => printExpenseThermalVoucher(exp)}
+                        style={{
+                          background: "#F1F5F9",
+                          border: "1px solid var(--border-subtle)",
+                          color: "var(--text-main)",
+                          borderRadius: "6px",
+                          padding: "4px 8px",
+                          fontSize: "0.75rem",
+                          cursor: "pointer",
+                          marginRight: "6px",
+                          fontWeight: "600",
+                        }}
+                        title="Print Thermal Expense Voucher (80mm/58mm)"
+                      >
+                        Receipt 🧾
+                      </button>
                       <button
                         onClick={() => handleDelete(exp.id, exp.category, exp.amount)}
                         style={{

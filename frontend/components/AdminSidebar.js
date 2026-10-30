@@ -56,15 +56,17 @@ function AdminSidebarContent({
           flexDirection: "column",
           justifyContent: "space-between",
           height: "100vh",
-          position: "sticky",
+          position: "fixed",
           top: 0,
+          left: 0,
+          bottom: 0,
           zIndex: 45,
           transition: "width 0.25s ease, min-width 0.25s ease, transform 0.25s ease",
         }}
         className={`admin-sidebar ${mobileOpen ? "mobile-open" : ""}`}
       >
-        {/* Top Brand Header */}
-        <div>
+        {/* Top Brand Header & Scrollable Nav */}
+        <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
           <div
             style={{
               padding: collapsed ? "20px 14px" : "20px 20px",
@@ -73,6 +75,7 @@ function AdminSidebarContent({
               alignItems: "center",
               justifyContent: collapsed ? "center" : "space-between",
               gap: "12px",
+              flexShrink: 0,
             }}
           >
             <Link
@@ -153,7 +156,7 @@ function AdminSidebarContent({
             )}
           </div>
 
-          {/* Navigation Links */}
+          {/* Navigation Links - Scrollable independently if overflowing */}
           <nav
             style={{
               padding: "16px 10px",
@@ -161,7 +164,8 @@ function AdminSidebarContent({
               flexDirection: "column",
               gap: "4px",
               overflowY: "auto",
-              maxHeight: "calc(100vh - 200px)",
+              flex: 1,
+              minHeight: 0,
             }}
           >
             {NAV_ITEMS.map((item) => {
@@ -358,9 +362,11 @@ export default function AdminSidebar(props) {
             flexDirection: "column",
             justifyContent: "space-between",
             height: "100vh",
-            position: "sticky",
+            position: "fixed",
             top: 0,
-            zIndex: 30,
+            left: 0,
+            bottom: 0,
+            zIndex: 45,
           }}
         />
       }

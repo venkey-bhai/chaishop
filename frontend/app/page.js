@@ -1,9 +1,9 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { 
-  getHealthStatus, 
-  testBackendConnection, 
+import {
+  getHealthStatus,
+  testBackendConnection,
   getSchemaSummary,
   registerCustomer,
   loginUser,
@@ -38,6 +38,7 @@ import {
   getCreditReport,
   getSalesForecast,
 } from "../services/api";
+import { printThermalBill } from "../utils/thermalPrinter";
 
 export default function Home() {
   const [healthData, setHealthData] = useState(null);
@@ -65,7 +66,7 @@ export default function Home() {
           setCurrentUser(JSON.parse(savedUserStr));
         }
       }
-    } catch (e) {}
+    } catch (e) { }
   }, []);
 
   async function handleDemoRegister() {
@@ -86,7 +87,7 @@ export default function Home() {
         try {
           localStorage.setItem("chaiflow_token", res.access_token);
           localStorage.setItem("chaiflow_user", JSON.stringify(res.user));
-        } catch (e) {}
+        } catch (e) { }
       }
     } catch (err) {
       setAuthResponse({ action: "Customer Registration", error: err.message });
@@ -110,7 +111,7 @@ export default function Home() {
         try {
           localStorage.setItem("chaiflow_token", res.access_token);
           localStorage.setItem("chaiflow_user", JSON.stringify(res.user));
-        } catch (e) {}
+        } catch (e) { }
       }
     } catch (err) {
       setAuthResponse({ action: "Admin Login", error: err.message });
@@ -184,7 +185,7 @@ export default function Home() {
       try {
         localStorage.removeItem("chaiflow_token");
         localStorage.removeItem("chaiflow_user");
-      } catch (e) {}
+      } catch (e) { }
     }
   }
 
@@ -215,7 +216,7 @@ export default function Home() {
             return savedToken;
           }
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // Deduplicate concurrent in-flight admin login calls
@@ -233,7 +234,7 @@ export default function Home() {
             try {
               localStorage.setItem("chaiflow_token", loginRes.access_token);
               localStorage.setItem("chaiflow_user", JSON.stringify(loginRes.user));
-            } catch (e) {}
+            } catch (e) { }
           }
           return loginRes.access_token;
         }
@@ -810,7 +811,7 @@ export default function Home() {
           <span style={{ fontSize: "0.9rem", color: healthData?.status === "healthy" ? "#10b981" : "#ef4444", fontWeight: "600" }}>
             {loading ? "Checking database..." : healthData?.status === "healthy" ? "PostgreSQL & FastAPI Online" : "System Degraded"}
           </span>
-          <button 
+          <button
             onClick={loadSystemDiagnostics}
             disabled={loading}
             style={{
@@ -910,8 +911,8 @@ export default function Home() {
               All 10 core business tables and 1 migration table are created and verified in PostgreSQL.
             </p>
           </div>
-          <button 
-            className="btn-primary" 
+          <button
+            className="btn-primary"
             onClick={handleTestClick}
             disabled={testing}
           >
@@ -924,7 +925,7 @@ export default function Home() {
           {schemaData?.tables?.map((table) => {
             const info = tableDescriptions[table] || { icon: "🗄️", desc: "PostgreSQL Database Table" };
             return (
-              <div 
+              <div
                 key={table}
                 style={{
                   background: "rgba(255, 255, 255, 0.025)",
@@ -1540,7 +1541,7 @@ export default function Home() {
           </div>
           <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
             <Link
-              href="/menu?table=3"
+              href="/menu"
               target="_blank"
               style={{
                 background: "linear-gradient(135deg, #f59e0b, #d97706)",
@@ -1557,7 +1558,27 @@ export default function Home() {
               }}
             >
               <span>🚀</span>
-              <span>Launch Table #3 Menu</span>
+              <span>Customer QR Menu</span>
+            </Link>
+            <Link
+              href="/my-menu"
+              target="_blank"
+              style={{
+                background: "linear-gradient(135deg, #059669, #047857)",
+                color: "#fff",
+                padding: "10px 18px",
+                borderRadius: "8px",
+                fontWeight: "700",
+                fontSize: "0.88rem",
+                textDecoration: "none",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+                boxShadow: "0 4px 14px rgba(5, 150, 105, 0.35)"
+              }}
+            >
+              <span>📋</span>
+              <span>My Menu</span>
             </Link>
             <Link
               href="/menu?counter=1"
@@ -2392,33 +2413,41 @@ export default function Home() {
 
         {/* Modal 3: Thermal Printable Bill Receipt (58mm / 80mm) */}
         {activeReceipt && (
-          <div style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 95,
-            background: "rgba(0,0,0,0.85)",
-            backdropFilter: "blur(6px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "20px"
-          }}>
-            <div style={{
-              background: "#fafafa",
-              color: "#111",
-              maxWidth: "360px",
-              width: "100%",
-              borderRadius: "12px",
-              padding: "24px 20px",
-              fontFamily: "monospace",
-              fontSize: "0.85rem",
-              boxShadow: "0 10px 35px rgba(0,0,0,0.6)",
-              maxHeight: "90vh",
-              overflowY: "auto"
-            }}>
+          <div
+            data-thermal-receipt-backdrop="true"
+            className="receipt-modal-backdrop"
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 95,
+              background: "rgba(0,0,0,0.85)",
+              backdropFilter: "blur(6px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "20px"
+            }}
+          >
+            <div
+              data-thermal-receipt="true"
+              className="receipt-card-container"
+              style={{
+                background: "#fafafa",
+                color: "#111",
+                maxWidth: "360px",
+                width: "100%",
+                borderRadius: "12px",
+                padding: "24px 20px",
+                fontFamily: "monospace",
+                fontSize: "0.85rem",
+                boxShadow: "0 10px 35px rgba(0,0,0,0.6)",
+                maxHeight: "90vh",
+                overflowY: "auto"
+              }}
+            >
               <div style={{ textAlign: "center", borderBottom: "1px dashed #666", paddingBottom: "10px", marginBottom: "10px" }}>
                 <div style={{ fontSize: "1.15rem", fontWeight: "900", letterSpacing: "1px" }}>{activeReceipt.shop_name}</div>
                 <div style={{ fontSize: "0.75rem", color: "#444" }}>{activeReceipt.tagline}</div>
@@ -2450,7 +2479,7 @@ export default function Home() {
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <span>{item.name}</span>
                       <span>{item.quantity} × {item.unit_price}</span>
-                      <span style={{ fontWeight: "700" }}>₹{Number(item.total_price).toFixed(2)}</span>
+                      <span style={{ fontWeight: "700" }}>₹{Number(item.total_price || item.total || 0).toFixed(2)}</span>
                     </div>
                     {item.customizations && (
                       <div style={{ fontSize: "0.68rem", color: "#555", fontStyle: "italic" }}>
@@ -2469,7 +2498,7 @@ export default function Home() {
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", marginTop: "4px" }}>
                   <span>Payment Mode:</span>
-                  <span>{activeReceipt.payment_method}</span>
+                  <span>{String(activeReceipt.payment_method || 'CASH').replace(/^PaymentMethod\./i, '')}</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem" }}>
                   <span>Status:</span>
@@ -2486,9 +2515,9 @@ export default function Home() {
                 {activeReceipt.footer_message}
               </div>
 
-              <div style={{ display: "flex", gap: "8px" }}>
+              <div className="no-print" style={{ display: "flex", gap: "8px" }}>
                 <button
-                  onClick={() => window.print()}
+                  onClick={() => printThermalBill(activeReceipt)}
                   style={{
                     flex: 1,
                     background: "#111",
@@ -2850,24 +2879,24 @@ export default function Home() {
                         fontWeight: "700",
                         background: exp.category === "Milk" ? "rgba(56, 189, 248, 0.15)" :
                           exp.category === "Tea Powder" ? "rgba(245, 158, 11, 0.15)" :
-                          exp.category === "Gas Cylinders" ? "rgba(239, 68, 68, 0.15)" :
-                          exp.category === "Sugar" ? "rgba(236, 72, 153, 0.15)" :
-                          exp.category === "Electricity" ? "rgba(234, 179, 8, 0.15)" :
-                          "rgba(147, 51, 234, 0.15)",
+                            exp.category === "Gas Cylinders" ? "rgba(239, 68, 68, 0.15)" :
+                              exp.category === "Sugar" ? "rgba(236, 72, 153, 0.15)" :
+                                exp.category === "Electricity" ? "rgba(234, 179, 8, 0.15)" :
+                                  "rgba(147, 51, 234, 0.15)",
                         color: exp.category === "Milk" ? "#38bdf8" :
                           exp.category === "Tea Powder" ? "#fbbf24" :
-                          exp.category === "Gas Cylinders" ? "#f87171" :
-                          exp.category === "Sugar" ? "#f472b6" :
-                          exp.category === "Electricity" ? "#facc15" :
-                          "#c084fc",
+                            exp.category === "Gas Cylinders" ? "#f87171" :
+                              exp.category === "Sugar" ? "#f472b6" :
+                                exp.category === "Electricity" ? "#facc15" :
+                                  "#c084fc",
                         border: "1px solid rgba(255, 255, 255, 0.1)"
                       }}>
                         {exp.category === "Milk" ? "🥛 " :
                           exp.category === "Tea Powder" ? "🍃 " :
-                          exp.category === "Gas Cylinders" ? "🔥 " :
-                          exp.category === "Sugar" ? "🍬 " :
-                          exp.category === "Electricity" ? "⚡ " :
-                          "🏷️ "}
+                            exp.category === "Gas Cylinders" ? "🔥 " :
+                              exp.category === "Sugar" ? "🍬 " :
+                                exp.category === "Electricity" ? "⚡ " :
+                                  "🏷️ "}
                         {exp.category}
                       </span>
                     </td>
@@ -2885,10 +2914,10 @@ export default function Home() {
                         fontWeight: "600",
                         background: exp.payment_method === "CASH" ? "rgba(34, 197, 94, 0.15)" :
                           exp.payment_method === "UPI" ? "rgba(59, 130, 246, 0.15)" :
-                          "rgba(168, 85, 247, 0.15)",
+                            "rgba(168, 85, 247, 0.15)",
                         color: exp.payment_method === "CASH" ? "#4ade80" :
                           exp.payment_method === "UPI" ? "#60a5fa" :
-                          "#c084fc"
+                            "#c084fc"
                       }}>
                         {exp.payment_method}
                       </span>

@@ -21,6 +21,9 @@ try:
         OrderStatus,
         OrderOTPChallenge,
         OTPChallengeStatus,
+        OrderType,
+        SharedDishTransaction,
+        SharedDishStatus,
     )
     from models.payment import Payment, PaymentRecordStatus
     from models.credit import CreditAccount, CreditTransaction, CreditTransactionType
@@ -37,6 +40,12 @@ try:
         OrderPaginationResponse,
         TokenDisplayItem,
         DailyTokenStats,
+        SharedDishCreate,
+        SharedDishResponse,
+        TableSeatChangeRequest,
+        DishStatusUpdate,
+        DishCancelRequest,
+        CustomerOrderEditRequest,
     )
     from dependencies.auth import require_admin, require_staff_or_admin, get_current_user
     from utils.security import decode_access_token
@@ -48,6 +57,7 @@ try:
         send_otp_sms,
         TEST_SMS_OUTBOX,
     )
+    from routers.tables import validate_table_and_seat
 except ImportError:
     from backend.config import settings
     from backend.database.connection import get_db
@@ -62,6 +72,9 @@ except ImportError:
         OrderStatus,
         OrderOTPChallenge,
         OTPChallengeStatus,
+        OrderType,
+        SharedDishTransaction,
+        SharedDishStatus,
     )
     from backend.models.payment import Payment, PaymentRecordStatus
     from backend.models.credit import CreditAccount, CreditTransaction, CreditTransactionType
@@ -78,6 +91,9 @@ except ImportError:
         OrderPaginationResponse,
         TokenDisplayItem,
         DailyTokenStats,
+        SharedDishCreate,
+        SharedDishResponse,
+        TableSeatChangeRequest,
     )
     from backend.dependencies.auth import require_admin, require_staff_or_admin, get_current_user
     from backend.utils.security import decode_access_token
@@ -89,6 +105,7 @@ except ImportError:
         send_otp_sms,
         TEST_SMS_OUTBOX,
     )
+    from backend.routers.tables import validate_table_and_seat
 
 logger = logging.getLogger(__name__)
 
@@ -156,21 +173,57 @@ def _format_order(order: Order, db: Optional[Session] = None) -> OrderResponse:
             dev_otp=dev_code
         )
 
-    return OrderResponse(
-        id=order.id,
-        order_number=order.order_number,
-        daily_token_number=order.daily_token_number,
-        customer_id=order.customer_id,
-        customer_name=order.customer_name,
-        customer_phone=order.customer_phone,
-        total_amount=order.total_amount,
-        payment_method=order.payment_method,
-        payment_status=order.payment_status,
-        order_status=order.order_status,
-        notes=order.notes,
-        created_at=order.created_at,
-        updated_at=order.updated_at,
-        items=[
+    can_change = order.order_status not in [OrderStatus.COMPLETED, OrderStatus.CANCELLED]
+
+    shared_dishes_list = []
+    for sd in getattr(order, "shared_dishes_sent", []) or []:
+        shared_dishes_list.append(
+            SharedDishResponse(
+                id=sd.id,
+                original_order_id=sd.original_order_id,
+                original_order_item_id=sd.original_order_item_id,
+                original_table_number=order.table_number,
+                original_seat_number=order.seat_number,
+                destination_table_id=sd.destination_table_id,
+                destination_table_number=sd.destination_table_id,
+                destination_seat_no=sd.destination_seat_no,
+                destination_seat_number=sd.destination_seat_no,
+                quantity=sd.quantity,
+                status=sd.status,
+                created_by=sd.created_by,
+                created_at=sd.created_at,
+                formatted_time=sd.created_at.strftime("%I:%M %p") if sd.created_at else None,
+                dish_name=sd.original_order_item.item_name if sd.original_order_item else None,
+            )
+        )
+
+    formatted_items = []
+    for item in (order.items or []):
+        item_shares = []
+        for st in getattr(item, "shared_transactions", []) or []:
+            item_shares.append(
+                SharedDishResponse(
+                    id=st.id,
+                    original_order_id=st.original_order_id,
+                    original_order_item_id=st.original_order_item_id,
+                    original_table_number=order.table_number,
+                    original_seat_number=order.seat_number,
+                    destination_table_id=st.destination_table_id,
+                    destination_table_number=st.destination_table_id,
+                    destination_seat_no=st.destination_seat_no,
+                    destination_seat_number=st.destination_seat_no,
+                    quantity=st.quantity,
+                    status=st.status,
+                    created_by=st.created_by,
+                    created_at=st.created_at,
+                    formatted_time=st.created_at.strftime("%I:%M %p") if st.created_at else None,
+                    dish_name=item.item_name,
+                )
+            )
+        shared_qty = sum(s.quantity for s in item_shares if s.status in ["CONFIRMED", "PENDING"])
+        remaining_unshared = max(0, item.quantity - shared_qty)
+
+        formatted_items.append(
             OrderItemResponse(
                 id=item.id,
                 order_id=item.order_id,
@@ -180,10 +233,37 @@ def _format_order(order: Order, db: Optional[Session] = None) -> OrderResponse:
                 unit_price=item.unit_price,
                 total_price=item.total_price,
                 selected_options=item.selected_options,
+                status=getattr(item, "status", "PENDING") or "PENDING",
+                cancelled_by=getattr(item, "cancelled_by", None),
+                cancelled_at=getattr(item, "cancelled_at", None),
+                completed_at=getattr(item, "completed_at", None),
+                shared_quantity=shared_qty,
+                remaining_unshared_quantity=remaining_unshared,
+                shares=item_shares,
             )
-            for item in (order.items or [])
-        ],
-        otp_challenge=challenge_info
+        )
+
+    return OrderResponse(
+        id=order.id,
+        order_number=order.order_number,
+        daily_token_number=order.daily_token_number,
+        customer_id=order.customer_id,
+        customer_name=order.customer_name,
+        customer_phone=order.customer_phone,
+        order_type=getattr(order, "order_type", "DINE_IN"),
+        table_number=getattr(order, "table_number", None),
+        seat_number=getattr(order, "seat_number", None),
+        total_amount=order.total_amount,
+        payment_method=order.payment_method,
+        payment_status=order.payment_status,
+        order_status=order.order_status,
+        notes=order.notes,
+        created_at=order.created_at,
+        updated_at=order.updated_at,
+        items=formatted_items,
+        otp_challenge=challenge_info,
+        can_change_table_or_seat=can_change,
+        shared_dishes=shared_dishes_list,
     )
 
 
@@ -259,6 +339,10 @@ def create_order(
         )
 
     customer_phone = clean_phone[-10:]
+
+    # Mandatory Table & Seat Capacity Validation for Dine-In (Requirement 4)
+    if (payload.order_type or "").upper() == "DINE_IN":
+        validate_table_and_seat(db, payload.table_number, payload.seat_number)
 
     # Duplicate Order Prevention via client Idempotency Key (Section 6)
     if payload.idempotency_key:
@@ -404,10 +488,15 @@ def create_order(
                 detail=f"Credit limit exceeded. Available credit: ₹{available_credit:.2f}, Order total: ₹{order_total:.2f}."
             )
 
-    # 5. Format Order Notes with Table/Counter Prefix
+    # 5. Format Order Notes with Table/Seat/Counter Prefix
+    order_type_str = (payload.order_type or "DINE_IN").upper().strip()
     notes_parts = []
-    if payload.table_number:
-        notes_parts.append(f"Table #{payload.table_number}")
+    if order_type_str == "TAKEAWAY":
+        notes_parts.append("Takeaway Order")
+    else:
+        if payload.table_number:
+            seat_info = f", Seat #{payload.seat_number}" if payload.seat_number else ""
+            notes_parts.append(f"Table #{payload.table_number}{seat_info}")
     if payload.counter_number:
         notes_parts.append(f"Counter #{payload.counter_number}")
     if payload.notes:
@@ -421,6 +510,9 @@ def create_order(
         customer_id=customer_id,
         customer_name=customer_name,
         customer_phone=customer_phone,
+        order_type=order_type_str,
+        table_number=payload.table_number if order_type_str != "TAKEAWAY" else None,
+        seat_number=payload.seat_number if order_type_str != "TAKEAWAY" else None,
         total_amount=order_total,
         payment_method=payload.payment_method,
         payment_status=PaymentStatus.PENDING,
@@ -999,8 +1091,9 @@ def get_today_tokens(
         filter_clause = and_(Order.created_at >= start_of_day, Order.created_at <= end_of_day)
 
     orders = db.query(Order).options(
-        joinedload(Order.items),
-        joinedload(Order.otp_challenges)
+        joinedload(Order.items).joinedload(OrderItem.shared_transactions),
+        joinedload(Order.otp_challenges),
+        joinedload(Order.shared_dishes_sent).joinedload(SharedDishTransaction.original_order_item)
     ).filter(filter_clause).order_by(Order.created_at.desc()).all()
 
     pending_otp = []
@@ -1010,6 +1103,28 @@ def get_today_tokens(
     completed = []
 
     for o in orders:
+        can_change = o.order_status not in [OrderStatus.COMPLETED, OrderStatus.CANCELLED]
+
+        shared_dishes_list = []
+        for sd in (getattr(o, "shared_dishes_sent", []) or []):
+            shared_dishes_list.append({
+                "id": sd.id,
+                "original_order_id": sd.original_order_id,
+                "original_order_item_id": sd.original_order_item_id,
+                "original_table_number": o.table_number,
+                "original_seat_number": o.seat_number,
+                "destination_table_id": sd.destination_table_id,
+                "destination_table_number": sd.destination_table_id,
+                "destination_seat_no": sd.destination_seat_no,
+                "destination_seat_number": sd.destination_seat_no,
+                "quantity": sd.quantity,
+                "status": sd.status,
+                "created_by": sd.created_by,
+                "created_at": sd.created_at.isoformat() if sd.created_at else None,
+                "formatted_time": sd.created_at.strftime("%I:%M %p") if sd.created_at else None,
+                "dish_name": sd.original_order_item.item_name if sd.original_order_item else None,
+            })
+
         items_list = []
         for i in (o.items or []):
             sugar = None
@@ -1024,6 +1139,19 @@ def get_today_tokens(
                     i.selected_options.get("strength")
                     or i.selected_options.get("tea_strength")
                 )
+            item_shares = [
+                {
+                    "id": st.id,
+                    "destination_table_id": st.destination_table_id,
+                    "destination_seat_no": st.destination_seat_no,
+                    "quantity": st.quantity,
+                    "status": st.status,
+                }
+                for st in (getattr(i, "shared_transactions", []) or [])
+            ]
+            shared_qty = sum(s["quantity"] for s in item_shares if s["status"] in ["CONFIRMED", "PENDING"])
+            remaining_unshared = max(0, i.quantity - shared_qty)
+
             items_list.append({
                 "id": i.id,
                 "menu_item_id": i.menu_item_id,
@@ -1032,8 +1160,15 @@ def get_today_tokens(
                 "unit_price": float(i.unit_price),
                 "total_price": float(i.total_price),
                 "selected_options": i.selected_options,
+                "status": getattr(i, "status", "PENDING") or "PENDING",
+                "cancelled_by": getattr(i, "cancelled_by", None),
+                "cancelled_at": i.cancelled_at.isoformat() if getattr(i, "cancelled_at", None) else None,
+                "completed_at": i.completed_at.isoformat() if getattr(i, "completed_at", None) else None,
                 "sugar_option": sugar,
                 "strength_option": strength,
+                "shared_quantity": shared_qty,
+                "remaining_unshared_quantity": remaining_unshared,
+                "shares": item_shares,
             })
 
         order_created = o.created_at.replace(tzinfo=timezone.utc) if o.created_at.tzinfo is None else o.created_at.astimezone(timezone.utc)
@@ -1054,6 +1189,10 @@ def get_today_tokens(
             "daily_token_number": o.daily_token_number,
             "customer_name": o.customer_name,
             "customer_phone": mask_phone_number(o.customer_phone),
+            "order_type": getattr(o, "order_type", "DINE_IN"),
+            "table_number": getattr(o, "table_number", None),
+            "seat_number": getattr(o, "seat_number", None),
+            "can_change_table_or_seat": can_change,
             "table_or_notes": o.notes,
             "notes": o.notes,
             "items": items_list,
@@ -1075,6 +1214,7 @@ def get_today_tokens(
             "is_previous_day": is_previous_day,
             "days_ago": days_ago,
             "date_label": date_label,
+            "shared_dishes": shared_dishes_list,
         }
         if o.order_status == OrderStatus.PENDING_OTP_VERIFICATION:
             pending_otp.append(token_info)
@@ -1437,3 +1577,668 @@ def update_order_payment(
     )
 
     return _format_order(order, db)
+
+
+# =============================================================
+# Table & Seat Change (Requirement 6)
+# =============================================================
+
+@router.patch(
+    "/{order_id}/table-seat",
+    response_model=OrderResponse,
+    summary="Change Order Table or Seat Prior to Delivery",
+    description="Allows customers or staff to update their table or seat until the order is delivered/completed."
+)
+def update_order_table_seat(
+    order_id: int,
+    payload: TableSeatChangeRequest,
+    db: Session = Depends(get_db),
+    opt_user: Optional[User] = Depends(_get_optional_user)
+):
+    order = db.query(Order).options(
+        joinedload(Order.items).joinedload(OrderItem.shared_transactions),
+        joinedload(Order.otp_challenges),
+        joinedload(Order.shared_dishes_sent).joinedload(SharedDishTransaction.original_order_item)
+    ).filter(Order.id == order_id).first()
+
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Order #{order_id} not found."
+        )
+
+    # Restriction: Allowed ONLY until the first order has been delivered
+    if order.order_status in [OrderStatus.COMPLETED, OrderStatus.CANCELLED]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Table or seat cannot be changed because this order has already been delivered or cancelled."
+        )
+
+    new_table = payload.table_number.strip()
+    new_seat = payload.seat_number.strip() if payload.seat_number else None
+
+    # Validate table capacity and seat bounds (Requirement 4)
+    validate_table_and_seat(db, new_table, new_seat)
+
+    old_table = order.table_number or "None"
+    old_seat = order.seat_number or "None"
+
+    order.order_type = "DINE_IN"
+    order.table_number = new_table
+    order.seat_number = new_seat
+
+    audit_entry = f"[Table/Seat changed: Table #{old_table}, Seat #{old_seat} ➔ Table #{new_table}, Seat #{new_seat or '1'}]"
+    if order.notes:
+        order.notes = f"{order.notes} | {audit_entry}"
+    else:
+        order.notes = audit_entry
+
+    db.commit()
+    db.refresh(order)
+    logger.info(f"Order #{order.order_number} table updated to Table {new_table}, Seat {new_seat}")
+    return _format_order(order, db)
+
+
+# =============================================================
+# Shared Dish Transfer / Sharing (Requirement 5 & 1)
+# =============================================================
+
+@router.post(
+    "/{order_id}/items/{item_id}/share",
+    response_model=SharedDishResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Share Dish with Another Table (Billing Stays with Original Table)",
+    description="Transfers a dish or partial quantity to a destination table for serving without duplicate billing."
+)
+def share_order_dish(
+    order_id: int,
+    item_id: int,
+    payload: SharedDishCreate,
+    db: Session = Depends(get_db),
+    opt_user: Optional[User] = Depends(_get_optional_user)
+):
+    order = db.query(Order).options(
+        joinedload(Order.items).joinedload(OrderItem.shared_transactions)
+    ).filter(Order.id == order_id).first()
+
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Order #{order_id} not found.")
+
+    if order.order_status == OrderStatus.CANCELLED:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cancelled orders cannot be shared.")
+
+    order_item = db.query(OrderItem).options(
+        joinedload(OrderItem.shared_transactions)
+    ).filter(OrderItem.id == item_id, OrderItem.order_id == order_id).first()
+
+    if not order_item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Item #{item_id} not found in Order #{order_id}.")
+
+    if payload.quantity <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Shared quantity must be greater than zero.")
+
+    unshared_qty = order_item.remaining_unshared_quantity
+    if payload.quantity > unshared_qty:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot share {payload.quantity} units. Only {unshared_qty} unshared unit(s) remaining for '{order_item.item_name}'."
+        )
+
+    dest_table = payload.destination_table.strip()
+    dest_seat = payload.destination_seat.strip() if payload.destination_seat else None
+    staff_name = payload.staff_member or (opt_user.name if opt_user else "Staff")
+
+    # Validate destination table and seat capacity (Requirement 4)
+    validate_table_and_seat(db, dest_table, dest_seat)
+
+    shared_tx = SharedDishTransaction(
+        original_order_id=order.id,
+        original_order_item_id=order_item.id,
+        destination_table_id=dest_table,
+        destination_seat_no=dest_seat,
+        quantity=payload.quantity,
+        status="CONFIRMED",
+        created_by=staff_name
+    )
+    db.add(shared_tx)
+
+    # Billing Responsibility Rule:
+    # Original table pays for the shared dish. No duplicate charge on destination.
+    share_note = f"[Shared {payload.quantity}x {order_item.item_name} with Table {dest_table}{f', Seat {dest_seat}' if dest_seat else ''}]"
+    if order.notes:
+        order.notes = f"{order.notes} | {share_note}"
+    else:
+        order.notes = share_note
+
+    db.commit()
+    db.refresh(shared_tx)
+    logger.info(f"Shared dish recorded: {payload.quantity}x {order_item.item_name} from Order #{order.order_number} to Table {dest_table}")
+
+    return SharedDishResponse(
+        id=shared_tx.id,
+        original_order_id=shared_tx.original_order_id,
+        original_order_item_id=shared_tx.original_order_item_id,
+        original_table_number=order.table_number,
+        original_seat_number=order.seat_number,
+        destination_table_id=shared_tx.destination_table_id,
+        destination_table_number=shared_tx.destination_table_id,
+        destination_seat_no=shared_tx.destination_seat_no,
+        destination_seat_number=shared_tx.destination_seat_no,
+        quantity=shared_tx.quantity,
+        status=shared_tx.status,
+        created_by=shared_tx.created_by,
+        created_at=shared_tx.created_at,
+        formatted_time=shared_tx.created_at.strftime("%I:%M %p") if shared_tx.created_at else None,
+        dish_name=order_item.item_name
+    )
+
+
+@router.get(
+    "/tables/{table_number}/shared-dishes",
+    response_model=List[SharedDishResponse],
+    summary="Get Shared Dishes Received by Table",
+    description="Returns all dishes shared with this table for serving display (no additional charge)."
+)
+def get_table_shared_dishes(
+    table_number: str,
+    db: Session = Depends(get_db)
+):
+    shares = db.query(SharedDishTransaction).options(
+        joinedload(SharedDishTransaction.original_order_item),
+        joinedload(SharedDishTransaction.original_order)
+    ).filter(
+        SharedDishTransaction.destination_table_id == table_number.strip(),
+        SharedDishTransaction.status == "CONFIRMED"
+    ).order_by(SharedDishTransaction.created_at.desc()).all()
+
+    return [
+        SharedDishResponse(
+            id=s.id,
+            original_order_id=s.original_order_id,
+            original_order_item_id=s.original_order_item_id,
+            original_table_number=s.original_order.table_number if s.original_order else None,
+            original_seat_number=s.original_order.seat_number if s.original_order else None,
+            destination_table_id=s.destination_table_id,
+            destination_table_number=s.destination_table_id,
+            destination_seat_no=s.destination_seat_no,
+            destination_seat_number=s.destination_seat_no,
+            quantity=s.quantity,
+            status=s.status,
+            created_by=s.created_by,
+            created_at=s.created_at,
+            formatted_time=s.created_at.strftime("%I:%M %p") if s.created_at else None,
+            dish_name=s.original_order_item.item_name if s.original_order_item else "Unknown Dish"
+        )
+        for s in shares
+    ]
+
+
+@router.post(
+    "/shares/{share_id}/reverse",
+    response_model=SharedDishResponse,
+    summary="Reverse Shared Dish Transaction",
+    description="Reverses a dish sharing record preserving audit history without altering the bill."
+)
+def reverse_shared_dish(
+    share_id: int,
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_staff_or_admin)
+):
+    share = db.query(SharedDishTransaction).options(
+        joinedload(SharedDishTransaction.original_order_item),
+        joinedload(SharedDishTransaction.original_order)
+    ).filter(SharedDishTransaction.id == share_id).first()
+
+    if not share:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sharing transaction not found.")
+
+    if share.status == "REVERSED":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This sharing transaction is already reversed.")
+
+    share.status = "REVERSED"
+    
+    rev_note = f"[Reversed share of {share.quantity}x {share.original_order_item.item_name if share.original_order_item else 'dish'} by {admin_user.name}]"
+    if share.original_order:
+        if share.original_order.notes:
+            share.original_order.notes = f"{share.original_order.notes} | {rev_note}"
+        else:
+            share.original_order.notes = rev_note
+
+    db.commit()
+    db.refresh(share)
+    return SharedDishResponse(
+        id=share.id,
+        original_order_id=share.original_order_id,
+        original_order_item_id=share.original_order_item_id,
+        original_table_number=share.original_order.table_number if share.original_order else None,
+        original_seat_number=share.original_order.seat_number if share.original_order else None,
+        destination_table_id=share.destination_table_id,
+        destination_table_number=share.destination_table_id,
+        destination_seat_no=share.destination_seat_no,
+        destination_seat_number=share.destination_seat_no,
+        quantity=share.quantity,
+        status=share.status,
+        created_by=share.created_by,
+        created_at=share.created_at,
+        formatted_time=share.created_at.strftime("%I:%M %p") if share.created_at else None,
+        dish_name=share.original_order_item.item_name if share.original_order_item else "Unknown Dish"
+    )
+
+
+# =============================================================
+# ADMIN DISH CONTROLS (Requirement 2 & 5)
+# =============================================================
+
+@router.patch(
+    "/{order_id}/items/{item_id}/dish-status",
+    response_model=OrderResponse,
+    summary="Update Dish Preparation Status (Admin/Staff Only)",
+    description="Updates an individual dish status (e.g. READY, PENDING, PREPARING) with validation and persistence."
+)
+def update_dish_status(
+    order_id: str,
+    item_id: int,
+    payload: DishStatusUpdate,
+    admin_user: User = Depends(require_staff_or_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Allows admin/staff to mark dish as READY or revert to PENDING/PREPARING.
+    Persists changes and updates overall order status if all dishes are completed.
+    """
+    if order_id.isdigit():
+        order = db.query(Order).filter(Order.id == int(order_id)).with_for_update().first()
+    else:
+        order = db.query(Order).filter(Order.order_number == order_id).with_for_update().first()
+
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Order '{order_id}' not found.")
+
+    target_item = db.query(OrderItem).filter(
+        OrderItem.id == item_id,
+        OrderItem.order_id == order.id
+    ).with_for_update().first()
+
+    if not target_item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dish item #{item_id} not found in this order.")
+
+    new_status = payload.status.upper().strip()
+    valid_statuses = ["PENDING", "PREPARING", "READY", "DELIVERED", "CANCELLED"]
+    if new_status not in valid_statuses:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid dish status: {payload.status}. Must be one of {valid_statuses}")
+
+    # Cannot toggle status of a cancelled dish via this endpoint
+    if target_item.status == "CANCELLED":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot update status of a cancelled dish. Dish was cancelled by Admin."
+        )
+
+    old_status = target_item.status
+    target_item.status = new_status
+    now_utc = datetime.now(timezone.utc)
+
+    if new_status == "READY":
+        target_item.completed_at = now_utc
+    elif new_status in ["PENDING", "PREPARING"]:
+        target_item.completed_at = None
+
+    # Audit log entry into order notes
+    status_note = f"[Dish '{target_item.item_name}' status changed: {old_status} ➔ {new_status} by {admin_user.name}]"
+    if order.notes:
+        order.notes = f"{order.notes} | {status_note}"
+    else:
+        order.notes = status_note
+
+    # Check if all active non-cancelled dishes are now READY or DELIVERED
+    active_items = [i for i in order.items if i.id != target_item.id and i.status != "CANCELLED"] + ([target_item] if new_status != "CANCELLED" else [])
+    if active_items and all(i.status in ["READY", "DELIVERED"] for i in active_items):
+        if order.order_status in [OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.PREPARING]:
+            order.order_status = OrderStatus.READY
+
+    db.commit()
+    db.refresh(order)
+    return _format_order(order, db)
+
+
+@router.post(
+    "/{order_id}/items/{item_id}/cancel-dish",
+    response_model=OrderResponse,
+    summary="Cancel Individual Dish (Admin Only)",
+    description="Authorized admin cancels a single dish without cancelling the entire order. Updates order total, preserves history, and returns stock."
+)
+def cancel_individual_dish(
+    order_id: str,
+    item_id: int,
+    payload: DishCancelRequest,
+    admin_user: User = Depends(require_staff_or_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Cancels an individual dish item:
+    1. Sets item status to CANCELLED and records cancelled_by = 'ADMIN'.
+    2. Subtracts dish total from order total_amount (and credit/payment records).
+    3. Restores stock to MenuItem if track_stock is enabled.
+    4. Preserves audit history.
+    """
+    if order_id.isdigit():
+        order = db.query(Order).filter(Order.id == int(order_id)).with_for_update().first()
+    else:
+        order = db.query(Order).filter(Order.order_number == order_id).with_for_update().first()
+
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Order '{order_id}' not found.")
+
+    target_item = db.query(OrderItem).filter(
+        OrderItem.id == item_id,
+        OrderItem.order_id == order.id
+    ).with_for_update().first()
+
+    if not target_item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dish item #{item_id} not found in this order.")
+
+    if target_item.status == "CANCELLED":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This dish is already cancelled.")
+
+    now_utc = datetime.now(timezone.utc)
+    old_status = target_item.status
+    target_item.status = "CANCELLED"
+    target_item.cancelled_by = "ADMIN"
+    target_item.cancelled_at = now_utc
+
+    # Restore stock if item was active
+    if target_item.menu_item_id:
+        menu_item = db.query(MenuItem).filter(MenuItem.id == target_item.menu_item_id).with_for_update().first()
+        if menu_item and menu_item.track_stock:
+            menu_item.available_quantity += target_item.quantity
+
+    # Recalculate order total from remaining active non-cancelled items
+    remaining_active_items = [i for i in order.items if i.id != target_item.id and i.status != "CANCELLED"]
+    new_total = sum(Decimal(str(i.total_price)) for i in remaining_active_items) if remaining_active_items else Decimal("0.00")
+    amount_reduced = Decimal(str(order.total_amount)) - new_total
+    order.total_amount = new_total
+
+    # Update payment or credit transaction if needed
+    if order.payment_method == PaymentMethod.CREDIT and amount_reduced > Decimal("0.00"):
+        customer_obj = db.query(Customer).filter(Customer.id == order.customer_id).with_for_update().first()
+        if customer_obj and customer_obj.credit_account:
+            credit_account = customer_obj.credit_account
+            credit_account.current_balance = max(Decimal("0.00"), credit_account.current_balance - amount_reduced)
+            adj_tx = CreditTransaction(
+                customer_id=customer_obj.id,
+                order_id=order.id,
+                transaction_type=CreditTransactionType.PAYMENT,
+                amount=amount_reduced,
+                balance_after=credit_account.current_balance,
+                description=f"Refund/Adjustment for cancelled dish '{target_item.item_name}' (Order #{order.daily_token_number}) by {admin_user.name}",
+                recorded_by_user_id=admin_user.id,
+            )
+            db.add(adj_tx)
+    else:
+        pmt = db.query(Payment).filter(Payment.order_id == order.id).first()
+        if pmt:
+            pmt.amount = new_total
+
+    # If all items are now cancelled, mark whole order CANCELLED
+    if not remaining_active_items:
+        order.order_status = OrderStatus.CANCELLED
+
+    # Audit log into order notes
+    reason_str = f" Reason: {payload.reason}" if payload.reason else ""
+    cancel_note = f"[Dish '{target_item.item_name}' (qty: {target_item.quantity}) cancelled by Admin {admin_user.name}.{reason_str}]"
+    if order.notes:
+        order.notes = f"{order.notes} | {cancel_note}"
+    else:
+        order.notes = cancel_note
+
+    db.commit()
+    db.refresh(order)
+    return _format_order(order, db)
+
+
+# =============================================================
+# CUSTOMER MY MENU ENDPOINTS (Requirement 4 & 5)
+# =============================================================
+
+@router.get(
+    "/customer/find-orders",
+    response_model=List[OrderResponse],
+    summary="Find Customer Orders by Phone or Name",
+    description="Customer-facing lookup to view current and recent orders by registered mobile number or customer name."
+)
+def find_customer_orders(
+    query: str = Query(..., min_length=2, max_length=100, description="Customer 10-digit mobile number or customer name"),
+    db: Session = Depends(get_db)
+):
+    """
+    Search active or recent orders by matching phone number or customer name.
+    Strictly validates input to prevent wildcard exposure.
+    """
+    clean_query = query.strip()
+    digits = "".join(ch for ch in clean_query if ch.isdigit())
+
+    filter_conditions = []
+    # If 10 digits provided, match phone strictly
+    if len(digits) >= 10:
+        phone_10 = digits[-10:]
+        filter_conditions.append(Order.customer_phone.like(f"%{phone_10}"))
+    else:
+        # Match customer name exact or substring (min 3 chars)
+        if len(clean_query) >= 3:
+            filter_conditions.append(Order.customer_name.ilike(f"%{clean_query}%"))
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Please enter a valid 10-digit mobile number or at least 3 letters of your customer name."
+            )
+
+    orders = db.query(Order).options(
+        joinedload(Order.items).joinedload(OrderItem.shared_transactions),
+        joinedload(Order.otp_challenges),
+        joinedload(Order.shared_dishes_sent).joinedload(SharedDishTransaction.original_order_item)
+    ).filter(or_(*filter_conditions)).order_by(Order.created_at.desc()).limit(15).all()
+
+    return [_format_order(o, db) for o in orders]
+
+
+@router.patch(
+    "/{order_id}/customer-edit",
+    response_model=OrderResponse,
+    summary="Customer Edit Order from My Menu",
+    description="Allows customer to add dishes, edit quantities, or request removal of eligible items on active orders."
+)
+def customer_edit_order(
+    order_id: str,
+    payload: CustomerOrderEditRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Allows a customer to edit their pending/preparing order:
+    - Verifies customer ownership by matching phone number.
+    - Prevents editing DELIVERED or CANCELLED dishes.
+    - Admin cancellations take strict precedence and cannot be overwritten.
+    - Server recalculates all prices based on active MenuItem catalog prices.
+    - Validates stock availability for quantity increments or new dishes.
+    """
+    clean_phone = "".join(ch for ch in payload.customer_phone if ch.isdigit())
+    if len(clean_phone) < 10:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A valid 10-digit mobile number is required to verify order ownership."
+        )
+    phone_10 = clean_phone[-10:]
+
+    if order_id.isdigit():
+        order = db.query(Order).filter(Order.id == int(order_id)).with_for_update().first()
+    else:
+        order = db.query(Order).filter(Order.order_number == order_id).with_for_update().first()
+
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Order '{order_id}' not found.")
+
+    # Verify customer ownership
+    order_digits = "".join(ch for ch in order.customer_phone if ch.isdigit())
+    if not order_digits.endswith(phone_10):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Phone number does not match this order. Authorization failed."
+        )
+
+    # Order level lifecycle check: Cannot edit delivered, cancelled or completed orders
+    if order.order_status in [OrderStatus.COMPLETED, OrderStatus.CANCELLED]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot edit order with status {order.order_status}."
+        )
+
+    audit_changes = []
+
+    for edit in payload.edits:
+        # Case A: Existing Item Modification (quantity change or customer removal)
+        if edit.item_id:
+            existing_item = db.query(OrderItem).filter(
+                OrderItem.id == edit.item_id,
+                OrderItem.order_id == order.id
+            ).with_for_update().first()
+
+            if not existing_item:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Dish item #{edit.item_id} not found in this order."
+                )
+
+            # RULE: If dish is CANCELLED (especially by Admin), customer cannot modify or re-activate it
+            if existing_item.status == "CANCELLED":
+                if edit.quantity <= 0:
+                    # Item is already cancelled; customer is keeping it cancelled or confirming removal
+                    continue
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Dish '{existing_item.item_name}' was cancelled and cannot be re-activated."
+                    )
+
+            # RULE: Cannot modify dishes that are already READY or DELIVERED
+            if existing_item.status in ["READY", "DELIVERED"]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Dish '{existing_item.item_name}' is already {existing_item.status} and cannot be modified."
+                )
+
+            if edit.quantity == 0:
+                # Customer requests removal/cancellation of dish
+                existing_item.status = "CANCELLED"
+                existing_item.cancelled_by = "CUSTOMER"
+                existing_item.cancelled_at = datetime.now(timezone.utc)
+                if existing_item.menu_item_id:
+                    m_item = db.query(MenuItem).filter(MenuItem.id == existing_item.menu_item_id).with_for_update().first()
+                    if m_item and m_item.track_stock:
+                        m_item.available_quantity += existing_item.quantity
+                audit_changes.append(f"Removed '{existing_item.item_name}'")
+            else:
+                # Quantity update
+                diff = edit.quantity - existing_item.quantity
+                if diff > 0 and existing_item.menu_item_id:
+                    m_item = db.query(MenuItem).filter(MenuItem.id == existing_item.menu_item_id).with_for_update().first()
+                    if m_item and m_item.track_stock:
+                        if m_item.available_quantity < diff:
+                            raise HTTPException(
+                                status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"Insufficient stock for '{existing_item.item_name}'. Only {m_item.available_quantity} available."
+                            )
+                        m_item.available_quantity -= diff
+                elif diff < 0 and existing_item.menu_item_id:
+                    m_item = db.query(MenuItem).filter(MenuItem.id == existing_item.menu_item_id).with_for_update().first()
+                    if m_item and m_item.track_stock:
+                        m_item.available_quantity += abs(diff)
+
+                old_qty = existing_item.quantity
+                existing_item.quantity = edit.quantity
+                existing_item.total_price = Decimal(str(existing_item.unit_price)) * Decimal(str(edit.quantity))
+                if edit.selected_options is not None:
+                    existing_item.selected_options = edit.selected_options
+                audit_changes.append(f"Changed '{existing_item.item_name}' qty: {old_qty} ➔ {edit.quantity}")
+
+        # Case B: Adding a new dish to the order
+        elif edit.menu_item_id:
+            if edit.quantity <= 0:
+                continue
+            menu_item = db.query(MenuItem).filter(MenuItem.id == edit.menu_item_id).with_for_update().first()
+            if not menu_item or not menu_item.is_available:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Dish item #{edit.menu_item_id} is unavailable or not found."
+                )
+
+            if menu_item.track_stock:
+                if menu_item.available_quantity < edit.quantity:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Insufficient stock for '{menu_item.name}'. Only {menu_item.available_quantity} available."
+                    )
+                menu_item.available_quantity -= edit.quantity
+
+            unit_price = Decimal(str(menu_item.price))
+            total_price = unit_price * Decimal(str(edit.quantity))
+            new_item = OrderItem(
+                order_id=order.id,
+                menu_item_id=menu_item.id,
+                item_name=menu_item.name,
+                quantity=edit.quantity,
+                unit_price=unit_price,
+                total_price=total_price,
+                selected_options=edit.selected_options,
+                status="PENDING",
+            )
+            db.add(new_item)
+            audit_changes.append(f"Added {edit.quantity}x '{menu_item.name}'")
+
+    db.flush()
+
+    # Recalculate order total from all active non-cancelled items
+    active_items = [i for i in order.items if i.status != "CANCELLED"]
+    new_total = sum(Decimal(str(i.total_price)) for i in active_items) if active_items else Decimal("0.00")
+    order.total_amount = new_total
+
+    # Update payment amount
+    pmt = db.query(Payment).filter(Payment.order_id == order.id).first()
+    if pmt:
+        pmt.amount = new_total
+
+    # If all items are cancelled or total reaches 0.00, close and cancel the entire order
+    if not active_items or new_total <= Decimal("0.00"):
+        old_status = order.order_status
+        order.order_status = OrderStatus.CANCELLED
+        if order.payment_status == PaymentStatus.PENDING:
+            order.payment_status = PaymentStatus.FAILED
+        if pmt:
+            if pmt.payment_status == PaymentRecordStatus.PENDING:
+                pmt.payment_status = PaymentRecordStatus.FAILED
+            elif pmt.payment_status == PaymentRecordStatus.COMPLETED:
+                pmt.payment_status = PaymentRecordStatus.REFUNDED
+
+        if order.payment_method == PaymentMethod.CREDIT and order.customer_id:
+            customer_obj = db.query(Customer).filter(Customer.id == order.customer_id).with_for_update().first()
+            if customer_obj and customer_obj.credit_account:
+                credit_account = customer_obj.credit_account
+                credit_account.current_balance = max(Decimal("0.00"), credit_account.current_balance - order.total_amount)
+
+        audit_changes.append(f"All dishes cancelled - Order #{order.daily_token_number} closed/cancelled (was {old_status})")
+
+    # Update credit balance if credit order and still active
+    elif order.payment_method == PaymentMethod.CREDIT:
+        customer_obj = db.query(Customer).filter(Customer.id == order.customer_id).with_for_update().first()
+        if customer_obj and customer_obj.credit_account:
+            credit_account = customer_obj.credit_account
+            pass
+
+    # Audit note
+    if audit_changes:
+        audit_note = f"[Customer Edits ({datetime.now(timezone.utc).strftime('%H:%M')}): {', '.join(audit_changes)}]"
+        order.notes = f"{order.notes} | {audit_note}" if order.notes else audit_note
+
+    db.commit()
+    db.refresh(order)
+    return _format_order(order, db)
+
+

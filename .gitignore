@@ -53,3 +53,7 @@ frontedntext.txt
 menuaddgesment.txt
 /*.txt
 !*requirements*.txt
+
+# Temporary local exports
+bill*.pdf
+*.docx

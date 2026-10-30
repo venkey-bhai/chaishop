@@ -13,6 +13,69 @@ import {
   deleteCategory,
 } from "../../../services/api";
 
+function getItemUnit(item) {
+  const name = (item?.name || "").toLowerCase();
+  const category = (item?.category_name || "").toLowerCase();
+
+  if (
+    name.includes("chai") ||
+    name.includes("tea") ||
+    name.includes("coffee") ||
+    category.includes("chai") ||
+    category.includes("tea") ||
+    category.includes("coffee") ||
+    category.includes("beverage")
+  ) {
+    return "cups";
+  }
+  if (
+    name.includes("bottle") ||
+    name.includes("water") ||
+    name.includes("drink") ||
+    name.includes("pepsi") ||
+    name.includes("coke") ||
+    name.includes("sprite") ||
+    name.includes("juice") ||
+    category.includes("bottle") ||
+    category.includes("cold drink")
+  ) {
+    return "bottles";
+  }
+  if (
+    name.includes("biscuit") ||
+    name.includes("rusk") ||
+    name.includes("pack") ||
+    name.includes("chips") ||
+    name.includes("namkeen") ||
+    category.includes("pack") ||
+    category.includes("biscuit")
+  ) {
+    return "packets";
+  }
+  if (
+    name.includes("samosa") ||
+    name.includes("puff") ||
+    name.includes("bun") ||
+    name.includes("vada") ||
+    name.includes("toast") ||
+    name.includes("sandwich") ||
+    name.includes("snack") ||
+    category.includes("snack")
+  ) {
+    return "pcs";
+  }
+  return "units";
+}
+
+function getItemIcon(item) {
+  const unit = getItemUnit(item);
+  if (unit === "cups") return "☕";
+  if (unit === "bottles") return "🥤";
+  if (unit === "packets") return "🍪";
+  if (unit === "pcs") return "🥪";
+  return "🍽️";
+}
+
 export default function MenuManagementPage() {
   const { getValidAdminToken } = useAuth();
 
@@ -21,6 +84,10 @@ export default function MenuManagementPage() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionMsg, setActionMsg] = useState(null); // { type: 'success'|'error', text: '' }
+
+  // Stock Adjustment Interactive States
+  const [updatingStockId, setUpdatingStockId] = useState(null);
+  const [touchRowId, setTouchRowId] = useState(null);
 
   // Search & Filter states
   const [selectedCatId, setSelectedCatId] = useState("all");
@@ -94,8 +161,8 @@ export default function MenuManagementPage() {
       selectedCatId !== "all"
         ? selectedCatId
         : categories.length > 0
-        ? String(categories[0].id)
-        : "";
+          ? String(categories[0].id)
+          : "";
     setFormData({
       ...initialFormState,
       category_id: defaultCatId,
@@ -148,13 +215,13 @@ export default function MenuManagementPage() {
     const hasCust = formData.allows_sugar || formData.allows_strength;
     const custOptions = hasCust
       ? {
-          ...(formData.allows_sugar
-            ? { sugar_levels: ["None", "Less", "Medium", "Extra"] }
-            : {}),
-          ...(formData.allows_strength
-            ? { tea_strength: ["Light", "Regular", "Kadak"] }
-            : {}),
-        }
+        ...(formData.allows_sugar
+          ? { sugar_levels: ["None", "Less", "Medium", "Extra"] }
+          : {}),
+        ...(formData.allows_strength
+          ? { tea_strength: ["Light", "Regular", "Kadak"] }
+          : {}),
+      }
       : null;
 
     const payload = {
@@ -241,18 +308,48 @@ export default function MenuManagementPage() {
     }
   }
 
-  // Quick Stock Stepper
+  // Validated Stock Adjustment with Optimistic Update & Rollback
   async function handleStockStep(item, delta) {
-    const newQty = Math.max(0, (item.available_quantity || 0) + delta);
+    if (updatingStockId === item.id) return; // Prevent concurrent duplicate submissions
+    const currentQty = item.available_quantity || 0;
+    const nextQty = Math.max(0, currentQty + delta);
+    if (nextQty === currentQty && delta < 0) {
+      return; // Already 0, cannot reduce further
+    }
+
+    const unit = getItemUnit(item);
+    setUpdatingStockId(item.id);
+
+    // Optimistic local state update
+    setItems((prevItems) =>
+      prevItems.map((i) =>
+        i.id === item.id ? { ...i, available_quantity: nextQty } : i
+      )
+    );
+
     try {
       const token = await getValidAdminToken();
-      await updateItemStock(item.id, newQty, token);
+      await updateItemStock(item.id, nextQty, token);
+      setActionMsg({
+        type: "success",
+        text: `Updated "${item.name}" stock to ${nextQty} ${unit}.`,
+      });
+      // Reconcile with backend
       await loadMenu();
     } catch (err) {
+      console.error("Stock update error:", err);
+      // Rollback on failure
+      setItems((prevItems) =>
+        prevItems.map((i) =>
+          i.id === item.id ? { ...i, available_quantity: currentQty } : i
+        )
+      );
       setActionMsg({
         type: "error",
-        text: `Failed to update stock: ${err.message}`,
+        text: `Failed to update stock for "${item.name}": ${err.message || "Network error"}`,
       });
+    } finally {
+      setUpdatingStockId(null);
     }
   }
 
@@ -371,7 +468,7 @@ export default function MenuManagementPage() {
           alignItems: "center",
           flexWrap: "wrap",
           gap: "16px",
-          background: "#FFFFFF",
+          background: "#ffffffff",
         }}
       >
         <div>
@@ -434,59 +531,43 @@ export default function MenuManagementPage() {
         </div>
       </div>
 
-      {/* Metrics Row */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-          gap: "14px",
-        }}
-      >
-        <div className="card" style={{ padding: "16px 20px" }}>
-          <div style={{ fontSize: "0.78rem", fontWeight: "600", color: "var(--text-muted)" }}>
-            TOTAL ITEMS
+      {/* Metrics Row - Sticky KPI Summary */}
+      <div className="sticky-kpi-container">
+        <div className="kpi-grid">
+          <div className="kpi-card">
+            <div className="kpi-card-header">
+              <span className="kpi-card-title">TOTAL ITEMS</span>
+              <span className="kpi-card-icon">☕</span>
+            </div>
+            <div className="kpi-card-value">{totalItemsCount}</div>
+            <div className="kpi-card-sub">Across {categories.length} categories</div>
           </div>
-          <div style={{ fontSize: "1.6rem", fontWeight: "800", color: "var(--text-main)", marginTop: "4px" }}>
-            {totalItemsCount}
-          </div>
-          <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginTop: "2px" }}>
-            Across {categories.length} categories
-          </div>
-        </div>
 
-        <div className="card" style={{ padding: "16px 20px" }}>
-          <div style={{ fontSize: "0.78rem", fontWeight: "600", color: "var(--status-success)" }}>
-            IN STOCK & READY
+          <div className="kpi-card">
+            <div className="kpi-card-header">
+              <span className="kpi-card-title" style={{ color: "var(--status-success)" }}>IN STOCK & READY</span>
+              <span className="kpi-card-icon">✅</span>
+            </div>
+            <div className="kpi-card-value" style={{ color: "var(--status-success)" }}>{inStockCount}</div>
+            <div className="kpi-card-sub">Visible on digital QR menu</div>
           </div>
-          <div style={{ fontSize: "1.6rem", fontWeight: "800", color: "var(--status-success)", marginTop: "4px" }}>
-            {inStockCount}
-          </div>
-          <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginTop: "2px" }}>
-            Visible on digital QR menu
-          </div>
-        </div>
 
-        <div className="card" style={{ padding: "16px 20px" }}>
-          <div style={{ fontSize: "0.78rem", fontWeight: "600", color: "var(--status-err)" }}>
-            OUT OF STOCK
+          <div className="kpi-card">
+            <div className="kpi-card-header">
+              <span className="kpi-card-title" style={{ color: "var(--status-err)" }}>OUT OF STOCK</span>
+              <span className="kpi-card-icon">🚫</span>
+            </div>
+            <div className="kpi-card-value" style={{ color: "var(--status-err)" }}>{outOfStockCount}</div>
+            <div className="kpi-card-sub">Disabled from customer orders</div>
           </div>
-          <div style={{ fontSize: "1.6rem", fontWeight: "800", color: "var(--status-err)", marginTop: "4px" }}>
-            {outOfStockCount}
-          </div>
-          <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginTop: "2px" }}>
-            Disabled from customer orders
-          </div>
-        </div>
 
-        <div className="card" style={{ padding: "16px 20px" }}>
-          <div style={{ fontSize: "0.78rem", fontWeight: "600", color: "var(--status-warning)" }}>
-            LOW STOCK ALERTS
-          </div>
-          <div style={{ fontSize: "1.6rem", fontWeight: "800", color: "var(--status-warning)", marginTop: "4px" }}>
-            {lowStockCount}
-          </div>
-          <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginTop: "2px" }}>
-            Below alert threshold
+          <div className="kpi-card">
+            <div className="kpi-card-header">
+              <span className="kpi-card-title" style={{ color: "var(--status-warning)" }}>LOW STOCK ALERTS</span>
+              <span className="kpi-card-icon">⚠️</span>
+            </div>
+            <div className="kpi-card-value" style={{ color: "var(--status-warning)" }}>{lowStockCount}</div>
+            <div className="kpi-card-sub">Below alert threshold</div>
           </div>
         </div>
       </div>
@@ -639,50 +720,86 @@ export default function MenuManagementPage() {
           </div>
         </div>
 
-        {/* Category Pills */}
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-          <span style={{ fontSize: "0.78rem", fontWeight: "700", color: "var(--text-dim)", marginRight: "4px" }}>
-            CATEGORIES:
-          </span>
-          <button
-            onClick={() => setSelectedCatId("all")}
+        {/* Category Selection Dropdown */}
+        <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap", paddingTop: "2px" }}>
+          <label
+            htmlFor="menu-category-select"
             style={{
-              padding: "6px 14px",
-              borderRadius: "20px",
-              border: `1px solid ${selectedCatId === "all" ? "var(--color-primary)" : "var(--border-subtle)"}`,
-              background: selectedCatId === "all" ? "var(--color-primary)" : "#FFFFFF",
-              color: selectedCatId === "all" ? "#FFFFFF" : "var(--text-main)",
-              cursor: "pointer",
               fontSize: "0.82rem",
-              fontWeight: "600",
-              transition: "all 0.15s ease",
+              fontWeight: "700",
+              color: "var(--text-muted)",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              whiteSpace: "nowrap",
             }}
           >
-            All Items ({items.length})
-          </button>
-          {categories.map((cat) => {
-            const count = items.filter((i) => i.category_id === cat.id).length;
-            const isSelected = selectedCatId === String(cat.id);
-            return (
+            <span>🏷️</span> CATEGORY:
+          </label>
+          <div style={{ position: "relative", minWidth: "260px", maxWidth: "380px", flex: "1 1 260px" }}>
+            <select
+              id="menu-category-select"
+              value={selectedCatId}
+              onChange={(e) => setSelectedCatId(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "8px 34px 8px 12px",
+                borderRadius: "8px",
+                border: selectedCatId === "all" ? "1px solid var(--border-subtle)" : "1px solid var(--color-primary)",
+                background: selectedCatId === "all" ? "#FFFFFF" : "var(--color-primary-light)",
+                color: selectedCatId === "all" ? "var(--text-main)" : "var(--color-primary)",
+                fontWeight: selectedCatId === "all" ? "600" : "700",
+                fontSize: "0.88rem",
+                cursor: "pointer",
+              }}
+            >
+              <option value="all">All Categories ({items.length} items)</option>
+              {categories.map((cat) => {
+                const count = items.filter((i) => i.category_id === cat.id).length;
+                return (
+                  <option key={cat.id} value={String(cat.id)}>
+                    {cat.name} ({count} {count === 1 ? "item" : "items"})
+                  </option>
+                );
+              })}
+            </select>
+            {selectedCatId !== "all" && (
               <button
-                key={cat.id}
-                onClick={() => setSelectedCatId(String(cat.id))}
+                type="button"
+                onClick={() => setSelectedCatId("all")}
+                title="Reset to All Categories"
                 style={{
-                  padding: "6px 14px",
-                  borderRadius: "20px",
-                  border: `1px solid ${isSelected ? "var(--color-primary)" : "var(--border-subtle)"}`,
-                  background: isSelected ? "var(--color-primary)" : "#FFFFFF",
-                  color: isSelected ? "#FFFFFF" : "var(--text-main)",
+                  position: "absolute",
+                  right: "24px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "transparent",
+                  border: "none",
                   cursor: "pointer",
-                  fontSize: "0.82rem",
-                  fontWeight: "600",
-                  transition: "all 0.15s ease",
+                  fontSize: "0.85rem",
+                  color: "var(--text-dim)",
+                  padding: "4px",
                 }}
               >
-                {cat.name} ({count})
+                ✕
               </button>
-            );
-          })}
+            )}
+          </div>
+          {selectedCatId !== "all" && (
+            <button
+              onClick={() => setSelectedCatId("all")}
+              className="btn-secondary"
+              style={{
+                padding: "6px 12px",
+                fontSize: "0.8rem",
+                fontWeight: "600",
+                borderRadius: "6px",
+              }}
+              title="Clear active category filter"
+            >
+              Show All Categories
+            </button>
+          )}
         </div>
       </div>
 
@@ -728,200 +845,199 @@ export default function MenuManagementPage() {
               </h3>
             </div>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
-                gap: "16px",
-              }}
-            >
+            {/* Compact Row Layout with Hover-to-Expand Stock Controls */}
+            <div className="menu-rows-wrapper">
               {cat.items.map((item) => {
                 const isLowStock =
                   item.track_stock && item.available_quantity <= item.low_stock_threshold;
+                const isOutOfStock = !item.is_available || (item.track_stock && item.available_quantity === 0);
+                const unit = getItemUnit(item);
+                const icon = getItemIcon(item);
+                const isUpdating = updatingStockId === item.id;
+                const isTouchActive = touchRowId === item.id;
 
                 return (
                   <div
                     key={item.id}
-                    className="card"
+                    className={`menu-row ${isTouchActive ? "touch-active" : ""}`}
+                    onClick={() => setTouchRowId((prev) => (prev === item.id ? null : item.id))}
                     style={{
-                      padding: "18px 20px",
-                      display: "flex",
-                      flexDirection: "column",
-                      justifyContent: "space-between",
-                      gap: "14px",
-                      borderLeft: item.is_available
-                        ? "4px solid var(--color-primary)"
-                        : "4px solid #CBD5E1",
-                      opacity: item.is_available ? 1 : 0.8,
-                      position: "relative",
+                      borderLeft: isOutOfStock
+                        ? "4px solid var(--status-err)"
+                        : isLowStock
+                          ? "4px solid var(--status-warning)"
+                          : "4px solid var(--color-primary)",
+                      opacity: item.is_available ? 1 : 0.78,
                     }}
                   >
-                    <div>
-                      {/* Title & Price */}
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "flex-start",
-                          gap: "8px",
-                          marginBottom: "6px",
-                        }}
-                      >
-                        <div>
-                          <h4
-                            style={{
-                              fontSize: "1.05rem",
-                              fontWeight: "700",
-                              color: "var(--text-main)",
-                              lineHeight: "1.3",
-                            }}
-                          >
-                            {item.name}
-                          </h4>
-                          <span
-                            style={{
-                              fontSize: "0.72rem",
-                              fontWeight: "600",
-                              background: "var(--bg-card-subtle)",
-                              color: "var(--text-dim)",
-                              padding: "2px 8px",
-                              borderRadius: "4px",
-                              display: "inline-block",
-                              marginTop: "3px",
-                            }}
-                          >
-                            {cat.name}
-                          </span>
-                        </div>
-                        <div
-                          style={{
-                            fontSize: "1.25rem",
-                            fontWeight: "800",
-                            color: "var(--color-primary)",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          ₹{parseFloat(item.price).toFixed(2)}
-                        </div>
-                      </div>
-
-                      {/* Description */}
-                      {item.description && (
-                        <p
-                          style={{
-                            fontSize: "0.82rem",
-                            color: "var(--text-muted)",
-                            margin: "8px 0",
-                            lineHeight: "1.4",
-                          }}
-                        >
-                          {item.description}
-                        </p>
+                    {/* 1. Thumbnail / Category Icon */}
+                    <div
+                      style={{
+                        width: "38px",
+                        height: "38px",
+                        borderRadius: "8px",
+                        background: isOutOfStock ? "#FEE2E2" : "var(--color-primary-light)",
+                        color: isOutOfStock ? "var(--status-err)" : "var(--color-primary)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: "1.25rem",
+                        flexShrink: 0,
+                        overflow: "hidden",
+                      }}
+                    >
+                      {item.image_url ? (
+                        <img
+                          src={item.image_url}
+                          alt={item.name}
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        />
+                      ) : (
+                        <span>{icon}</span>
                       )}
+                    </div>
 
-                      {/* Badges: Customization & Stock Warning */}
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "6px",
-                          flexWrap: "wrap",
-                          marginTop: "8px",
-                          alignItems: "center",
-                        }}
-                      >
+                    {/* 2. Item Details & Customizations */}
+                    <div style={{ flex: 1, minWidth: "180px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                        <span
+                          style={{
+                            fontSize: "0.95rem",
+                            fontWeight: "700",
+                            color: "var(--text-main)",
+                            lineHeight: "1.2",
+                          }}
+                        >
+                          {item.name}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "0.7rem",
+                            fontWeight: "600",
+                            background: "var(--bg-card-subtle)",
+                            color: "var(--text-muted)",
+                            padding: "2px 7px",
+                            borderRadius: "4px",
+                          }}
+                        >
+                          {cat.name}
+                        </span>
                         {item.has_customizations && (
                           <span
                             style={{
-                              fontSize: "0.7rem",
+                              fontSize: "0.68rem",
                               fontWeight: "600",
                               background: "#F0FDF4",
                               border: "1px solid #BBF7D0",
                               color: "var(--status-success)",
-                              padding: "2px 7px",
+                              padding: "1px 6px",
                               borderRadius: "4px",
                             }}
                           >
                             ✨ Custom Options
                           </span>
                         )}
-                        {isLowStock && item.is_available && (
-                          <span
-                            style={{
-                              fontSize: "0.7rem",
-                              fontWeight: "700",
-                              background: "#FEF3C7",
-                              border: "1px solid #FDE68A",
-                              color: "#B45309",
-                              padding: "2px 7px",
-                              borderRadius: "4px",
-                            }}
-                          >
-                            ⚠️ Low Stock ({item.available_quantity} left)
-                          </span>
-                        )}
                       </div>
 
-                      {/* Stock Quantity Stepper */}
-                      {item.track_stock && (
+                      {item.description && (
                         <div
                           style={{
-                            marginTop: "12px",
-                            padding: "8px 10px",
-                            borderRadius: "8px",
-                            background: "var(--bg-card-subtle)",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
+                            fontSize: "0.78rem",
+                            color: "var(--text-muted)",
+                            marginTop: "2px",
+                            lineHeight: "1.3",
+                            maxWidth: "500px",
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
                           }}
                         >
-                          <span style={{ fontSize: "0.78rem", fontWeight: "600", color: "var(--text-muted)" }}>
-                            Stock Units:
-                          </span>
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          {item.description}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 3. Selling Price */}
+                    <div
+                      style={{
+                        minWidth: "85px",
+                        textAlign: "right",
+                        fontSize: "1.1rem",
+                        fontWeight: "800",
+                        color: "var(--color-primary)",
+                        flexShrink: 0,
+                      }}
+                    >
+                      ₹{parseFloat(item.price).toFixed(2)}
+                    </div>
+
+                    {/* 4. Hover-to-Expand Stock Units Stepper */}
+                    <div
+                      className="stock-hover-wrapper"
+                      style={{ flexShrink: 0 }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {item.track_stock ? (
+                        <>
+                          {/* Static Badge (Shown normally) */}
+                          <div
+                            className="stock-static-badge"
+                            title="Hover or tap to adjust stock quantity"
+                            style={{
+                              color: isLowStock ? "#B45309" : "var(--text-main)",
+                              background: isLowStock ? "#FEF3C7" : "#F1F5F9",
+                              border: isLowStock ? "1px solid #FDE68A" : "1px solid var(--border-subtle)",
+                            }}
+                          >
+                            <span>📦</span>
+                            <span>
+                              {item.available_quantity} {unit}
+                            </span>
+                            {item.low_stock_threshold > 0 && (
+                              <span style={{ fontSize: "0.68rem", opacity: 0.7 }}>
+                                (alert &le;{item.low_stock_threshold})
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Hover / Active Interactive Controls */}
+                          <div className="stock-stepper-active">
                             <button
-                              onClick={() => handleStockStep(item, -5)}
-                              style={{
-                                width: "24px",
-                                height: "24px",
-                                borderRadius: "4px",
-                                border: "1px solid var(--border-subtle)",
-                                background: "#FFFFFF",
-                                cursor: "pointer",
-                                fontWeight: "700",
-                                fontSize: "0.75rem",
-                              }}
-                              title="Decrease 5"
-                            >
-                              -5
-                            </button>
-                            <button
+                              type="button"
+                              disabled={item.available_quantity <= 0 || isUpdating}
                               onClick={() => handleStockStep(item, -1)}
                               style={{
                                 width: "24px",
                                 height: "24px",
                                 borderRadius: "4px",
                                 border: "1px solid var(--border-subtle)",
-                                background: "#FFFFFF",
-                                cursor: "pointer",
-                                fontWeight: "700",
+                                background: item.available_quantity <= 0 ? "#F1F5F9" : "#FFFFFF",
+                                cursor: item.available_quantity <= 0 ? "not-allowed" : "pointer",
+                                fontWeight: "800",
                                 fontSize: "0.85rem",
+                                color: "var(--text-main)",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
                               }}
-                              title="Decrease 1"
+                              title={`Decrease stock (-1 ${unit})`}
                             >
-                              -
+                              −
                             </button>
                             <span
                               style={{
-                                fontSize: "0.88rem",
-                                fontWeight: "800",
-                                color: isLowStock ? "var(--status-err)" : "var(--text-main)",
-                                minWidth: "28px",
+                                minWidth: "32px",
                                 textAlign: "center",
+                                fontWeight: "800",
+                                fontSize: "0.85rem",
+                                color: isLowStock ? "var(--status-err)" : "var(--color-primary)",
                               }}
                             >
-                              {item.available_quantity}
+                              {isUpdating ? "..." : item.available_quantity}
                             </span>
                             <button
+                              type="button"
+                              disabled={isUpdating}
                               onClick={() => handleStockStep(item, 1)}
                               style={{
                                 width: "24px",
@@ -930,113 +1046,136 @@ export default function MenuManagementPage() {
                                 border: "1px solid var(--border-subtle)",
                                 background: "#FFFFFF",
                                 cursor: "pointer",
-                                fontWeight: "700",
+                                fontWeight: "800",
                                 fontSize: "0.85rem",
+                                color: "var(--text-main)",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
                               }}
-                              title="Increase 1"
+                              title={`Increase stock (+1 ${unit})`}
                             >
                               +
                             </button>
                             <button
+                              type="button"
+                              disabled={isUpdating}
                               onClick={() => handleStockStep(item, 5)}
                               style={{
-                                width: "24px",
+                                padding: "0 4px",
                                 height: "24px",
                                 borderRadius: "4px",
                                 border: "1px solid var(--border-subtle)",
-                                background: "#FFFFFF",
+                                background: "#F8FAFC",
                                 cursor: "pointer",
                                 fontWeight: "700",
-                                fontSize: "0.75rem",
+                                fontSize: "0.72rem",
+                                color: "var(--color-primary)",
                               }}
-                              title="Increase 5"
+                              title={`Quick Add (+5 ${unit})`}
                             >
                               +5
                             </button>
                           </div>
-                        </div>
+                        </>
+                      ) : (
+                        <span style={{ fontSize: "0.75rem", color: "var(--text-dim)" }}>
+                          Stock untracked
+                        </span>
                       )}
                     </div>
 
-                    {/* Bottom Actions: Toggle, Edit, Delete */}
+                    {/* 5. Stock Status Badge */}
+                    <div style={{ minWidth: "95px", flexShrink: 0 }}>
+                      <span
+                        style={{
+                          fontSize: "0.72rem",
+                          fontWeight: "700",
+                          padding: "3px 8px",
+                          borderRadius: "12px",
+                          background: !item.is_available
+                            ? "#FEE2E2"
+                            : isLowStock
+                              ? "#FEF3C7"
+                              : "#DCFCE7",
+                          color: !item.is_available
+                            ? "var(--status-err)"
+                            : isLowStock
+                              ? "#B45309"
+                              : "var(--status-success)",
+                          whiteSpace: "nowrap",
+                          display: "inline-block",
+                        }}
+                      >
+                        {!item.is_available
+                          ? "○ Out of Stock"
+                          : isLowStock
+                            ? "⚠️ Low Stock"
+                            : "● In Stock"}
+                      </span>
+                    </div>
+
+                    {/* 6. QR Menu Availability Toggle */}
+                    <div style={{ minWidth: "115px", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={() => handleToggle(item)}
+                        style={{
+                          padding: "4px 8px",
+                          borderRadius: "6px",
+                          border: `1px solid ${item.is_available ? "#BBF7D0" : "#FECACA"}`,
+                          background: item.is_available ? "#F0FDF4" : "#FEF2F2",
+                          color: item.is_available ? "var(--status-success)" : "var(--status-err)",
+                          fontSize: "0.72rem",
+                          fontWeight: "700",
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                        }}
+                        title={item.is_available ? "Customer can order from QR. Click to hide." : "Hidden from QR menu. Click to make available."}
+                      >
+                        {item.is_available ? "📱 QR: Active" : "📱 QR: Hidden"}
+                      </button>
+                    </div>
+
+                    {/* 7. Edit & Delete Actions */}
                     <div
                       style={{
-                        borderTop: "1px solid var(--border-subtle)",
-                        paddingTop: "12px",
                         display: "flex",
-                        justifyContent: "space-between",
                         alignItems: "center",
-                        gap: "8px",
+                        gap: "6px",
+                        flexShrink: 0,
                       }}
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      {/* Availability Status & Toggle Action */}
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                        <span
-                          style={{
-                            fontSize: "0.74rem",
-                            fontWeight: "700",
-                            padding: "3px 8px",
-                            borderRadius: "12px",
-                            background: item.is_available ? "#DCFCE7" : "#FEE2E2",
-                            color: item.is_available ? "var(--status-success)" : "var(--status-err)",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {item.is_available ? "● In Stock" : "○ Out of Stock"}
-                        </span>
+                      <button
+                        onClick={() => handleOpenEditModal(item)}
+                        className="btn-secondary"
+                        style={{
+                          padding: "5px 8px",
+                          fontSize: "0.76rem",
+                          fontWeight: "600",
+                        }}
+                        title="Edit Item"
+                      >
+                        ✏️ Edit
+                      </button>
 
-                        <button
-                          onClick={() => handleToggle(item)}
-                          style={{
-                            padding: "5px 10px",
-                            borderRadius: "6px",
-                            border: `1px solid ${item.is_available ? "#FECACA" : "#BBF7D0"}`,
-                            background: item.is_available ? "#FEF2F2" : "#F0FDF4",
-                            color: item.is_available ? "var(--status-err)" : "var(--status-success)",
-                            fontSize: "0.74rem",
-                            fontWeight: "600",
-                            cursor: "pointer",
-                            whiteSpace: "nowrap",
-                          }}
-                          title={item.is_available ? "Click to mark as out of stock" : "Click to mark as in stock"}
-                        >
-                          {item.is_available ? "Mark Out of Stock" : "Mark Available"}
-                        </button>
-                      </div>
-
-                      <div style={{ display: "flex", gap: "6px" }}>
-                        {/* Edit Button */}
-                        <button
-                          onClick={() => handleOpenEditModal(item)}
-                          className="btn-secondary"
-                          style={{
-                            padding: "6px 10px",
-                            fontSize: "0.78rem",
-                            fontWeight: "600",
-                          }}
-                          title="Edit Item"
-                        >
-                          ✏️ Edit
-                        </button>
-
-                        {/* Delete Button */}
-                        <button
-                          onClick={() => setDeletingItem(item)}
-                          style={{
-                            padding: "6px 10px",
-                            borderRadius: "6px",
-                            border: "1px solid #FECACA",
-                            background: "#FEF2F2",
-                            color: "var(--status-err)",
-                            fontSize: "0.78rem",
-                            fontWeight: "600",
-                            cursor: "pointer",
-                          }}
-                          title="Delete Item"
-                        >
-                          🗑️
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => setDeletingItem(item)}
+                        style={{
+                          padding: "5px 7px",
+                          borderRadius: "6px",
+                          border: "1px solid #FECACA",
+                          background: "#FEF2F2",
+                          color: "var(--status-err)",
+                          fontSize: "0.76rem",
+                          fontWeight: "600",
+                          cursor: "pointer",
+                        }}
+                        title="Delete Item"
+                      >
+                        🗑️
+                      </button>
                     </div>
                   </div>
                 );
@@ -1292,8 +1431,8 @@ export default function MenuManagementPage() {
                   {submitting
                     ? "Saving..."
                     : editingItem
-                    ? "Update Item"
-                    : "Add to Menu"}
+                      ? "Update Item"
+                      : "Add to Menu"}
                 </button>
               </div>
             </form>

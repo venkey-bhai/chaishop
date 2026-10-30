@@ -12,12 +12,15 @@ try:
     from models.user import User, UserRole
     from models.customer import Customer
     from models.credit import CreditAccount, CreditTransaction, CreditTransactionType
+    from models.credit_audit import CreditLimitAudit
     from models.order import Order, OrderItem, PaymentMethod, PaymentStatus, OrderStatus
     from models.payment import Payment, PaymentRecordStatus
     from schemas.customer import (
         CustomerCreate,
         CustomerUpdate,
         CustomerCreditStatusUpdate,
+        CustomerCreditLimitUpdate,
+        CreditLimitAuditResponse,
         CustomerResponse,
         CustomerPaginationResponse,
         CustomerHistoryResponse,
@@ -38,12 +41,15 @@ except ImportError:
     from backend.models.user import User, UserRole
     from backend.models.customer import Customer
     from backend.models.credit import CreditAccount, CreditTransaction, CreditTransactionType
+    from backend.models.credit_audit import CreditLimitAudit
     from backend.models.order import Order, OrderItem, PaymentMethod, PaymentStatus, OrderStatus
     from backend.models.payment import Payment, PaymentRecordStatus
     from backend.schemas.customer import (
         CustomerCreate,
         CustomerUpdate,
         CustomerCreditStatusUpdate,
+        CustomerCreditLimitUpdate,
+        CreditLimitAuditResponse,
         CustomerResponse,
         CustomerPaginationResponse,
         CustomerHistoryResponse,
@@ -393,6 +399,10 @@ def update_credit_status(
     customer.credit_limit = payload.credit_limit if payload.is_credit_eligible else Decimal("0.00")
 
     # Sync with CreditAccount
+    old_limit = customer.credit_limit or Decimal("0.00")
+    customer.is_credit_eligible = payload.is_credit_eligible
+    customer.credit_limit = payload.credit_limit if payload.is_credit_eligible else Decimal("0.00")
+
     if customer.credit_account:
         customer.credit_account.is_active = payload.is_credit_eligible
         customer.credit_account.credit_limit = customer.credit_limit
@@ -405,6 +415,16 @@ def update_credit_status(
         )
         db.add(new_account)
 
+    if old_limit != customer.credit_limit:
+        audit_entry = CreditLimitAudit(
+            customer_id=customer.id,
+            admin_name=admin_user.name or f"Admin #{admin_user.id}",
+            old_limit=old_limit,
+            new_limit=customer.credit_limit,
+            reason="Rule 61 Credit Eligibility/Limit Toggle",
+        )
+        db.add(audit_entry)
+
     db.commit()
     db.refresh(customer)
     logger.info(
@@ -413,6 +433,103 @@ def update_credit_status(
     )
 
     return _format_customer(customer, db)
+
+
+@router.put(
+    "/{customer_id}/credit-limit",
+    response_model=CustomerResponse,
+    summary="Update Customer Credit Limit (Admin Only)",
+    description="Allows authorized administrator to increase, decrease, or reset a customer's credit limit with mandatory audit logging."
+)
+def update_customer_credit_limit(
+    customer_id: int,
+    payload: CustomerCreditLimitUpdate,
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    customer = db.query(Customer).options(joinedload(Customer.credit_account)).filter(
+        Customer.id == customer_id
+    ).first()
+
+    if not customer:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Customer with ID {customer_id} does not exist.",
+        )
+
+    old_limit = customer.credit_limit or Decimal("0.00")
+    new_limit = payload.credit_limit
+
+    customer.credit_limit = new_limit
+    if new_limit > 0:
+        customer.is_credit_eligible = True
+
+    if customer.credit_account:
+        customer.credit_account.credit_limit = new_limit
+        if new_limit > 0:
+            customer.credit_account.is_active = True
+    else:
+        new_account = CreditAccount(
+            customer_id=customer.id,
+            credit_limit=new_limit,
+            current_balance=Decimal("0.00"),
+            is_active=(new_limit > 0),
+        )
+        db.add(new_account)
+
+    audit_entry = CreditLimitAudit(
+        customer_id=customer.id,
+        admin_name=admin_user.name or f"Admin #{admin_user.id}",
+        old_limit=old_limit,
+        new_limit=new_limit,
+        reason=payload.reason or "Admin updated credit limit"
+    )
+    db.add(audit_entry)
+
+    db.commit()
+    db.refresh(customer)
+    logger.info(
+        f"Admin {admin_user.name} modified credit limit for Customer #{customer.id} from ₹{old_limit} to ₹{new_limit}"
+    )
+    return _format_customer(customer, db)
+
+
+@router.get(
+    "/{customer_id}/credit-limit-history",
+    response_model=List[CreditLimitAuditResponse],
+    summary="Get Credit Limit Audit History (Staff/Admin)",
+    description="Returns full audit trail of all credit limit changes for this customer."
+)
+def get_customer_credit_limit_history(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_staff_or_admin),
+):
+    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    if not customer:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Customer with ID {customer_id} does not exist.",
+        )
+
+    audits = db.query(CreditLimitAudit).filter(
+        CreditLimitAudit.customer_id == customer_id
+    ).order_by(CreditLimitAudit.created_at.desc()).all()
+
+    return [
+        CreditLimitAuditResponse(
+            id=a.id,
+            customer_id=a.customer_id,
+            admin_name=a.admin_name,
+            old_limit=a.old_limit,
+            new_limit=a.new_limit,
+            reason=a.reason,
+            created_at=a.created_at,
+            formatted_time=a.created_at.strftime("%d %b %Y, %I:%M %p") if a.created_at else None,
+        )
+        for a in audits
+    ]
+
 
 
 @router.delete(
@@ -687,6 +804,9 @@ def get_customer_history(
             "payment_method": pay_method_str,
             "payment_status": pay_status_str,
             "order_status": order_status_str,
+            "order_type": o.order_type.value if hasattr(o.order_type, "value") else (str(o.order_type) if o.order_type else "DINE_IN"),
+            "table_number": o.table_number,
+            "seat_number": o.seat_number,
             "description": f"Bill #{o.daily_token_number} ({o.order_number})",
             "notes": o.notes,
             "explicit_balance_after": o.credit_transaction.balance_after if o.credit_transaction else None,

@@ -140,11 +140,29 @@ CREATE TABLE IF NOT EXISTS orders (
 	payment_method payment_method_enum NOT NULL, 
 	payment_status payment_status_enum NOT NULL, 
 	order_status order_status_enum NOT NULL, 
+	order_type VARCHAR(20) DEFAULT 'DINE_IN' NOT NULL,
+	table_number VARCHAR(20),
+	seat_number VARCHAR(20),
 	notes TEXT, 
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	PRIMARY KEY (id), 
 	FOREIGN KEY(customer_id) REFERENCES customers (id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS shared_dish_transactions (
+	id SERIAL NOT NULL,
+	original_order_id INTEGER NOT NULL,
+	original_order_item_id INTEGER NOT NULL,
+	destination_table_id VARCHAR(20) NOT NULL,
+	destination_seat_no VARCHAR(20),
+	quantity INTEGER NOT NULL,
+	status VARCHAR(32) DEFAULT 'CONFIRMED' NOT NULL,
+	created_by VARCHAR(100),
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	PRIMARY KEY (id),
+	FOREIGN KEY(original_order_id) REFERENCES orders (id) ON DELETE CASCADE,
+	FOREIGN KEY(original_order_item_id) REFERENCES order_items (id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS credit_transactions (

@@ -78,6 +78,28 @@ class CustomerCreditStatusUpdate(BaseModel):
     credit_limit: Decimal = Field(default=Decimal("0.00"), ge=0, description="Maximum unpaid credit balance ceiling")
 
 
+class CustomerCreditLimitUpdate(BaseModel):
+    """
+    Payload for configuring and modifying a customer's credit limit.
+    """
+    credit_limit: Decimal = Field(..., ge=0, description="New approved credit limit ceiling (0 to reset)")
+    reason: Optional[str] = Field(default=None, max_length=255, description="Audit reason for limit change")
+
+
+class CreditLimitAuditResponse(BaseModel):
+    id: int
+    customer_id: int
+    admin_name: str
+    old_limit: Decimal
+    new_limit: Decimal
+    reason: Optional[str] = None
+    created_at: datetime
+    formatted_time: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+
 class CustomerResponse(BaseModel):
     """
     Detailed public customer profile DTO with real-time financial metrics.
@@ -138,6 +160,9 @@ class CustomerTransactionRecord(BaseModel):
     payment_method: Optional[str] = None
     payment_status: Optional[str] = None
     order_status: Optional[str] = None
+    order_type: Optional[str] = "DINE_IN"
+    table_number: Optional[str] = None
+    seat_number: Optional[str] = None
     previous_outstanding_credit: Decimal = Decimal("0.00")
     closing_outstanding_credit: Decimal = Decimal("0.00")
     description: Optional[str] = None
