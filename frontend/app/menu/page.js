@@ -1595,129 +1595,129 @@ function CustomerMenuContent() {
                     borderRadius: "10px",
                     marginBottom: "16px"
                   }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "6px" }}>
-                      <div>
-                        <label style={{ fontSize: "0.8rem", color: "#B45309", display: "flex", justifyContent: "space-between", marginBottom: "4px", fontWeight: "700" }}>
-                          <span>Table No. <span style={{ color: "#EF4444" }}>*</span></span>
-                        </label>
-                        {diningTables && diningTables.length > 0 ? (
-                          <select
-                            value={tableNumber}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setTableNumber(val);
-                              if (orderError) setOrderError("");
-                              const tbl = diningTables.find((t) => String(t.table_number).trim() === String(val).trim());
-                              if (tbl && seatNumber && parseInt(seatNumber, 10) > tbl.max_seats) {
-                                setSeatNumber("1");
-                              }
-                            }}
-                            style={{
-                              width: "100%",
-                              background: "#FFFFFF",
-                              border: !tableNumber.trim() ? "1.5px solid #EF4444" : "1.5px solid #CBD5E1",
-                              borderRadius: "8px",
-                              padding: "9px 12px",
-                              color: "#0F172A",
-                              fontSize: "0.88rem",
-                              fontWeight: "700",
-                              outline: "none"
-                            }}
-                          >
-                            <option value="">Select Table...</option>
-                            {diningTables.map((t) => (
-                              <option key={t.id} value={t.table_number}>
-                                Table #{t.table_number} ({t.max_seats} Seats)
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <input
-                            type="text"
-                            placeholder="e.g. 3, T-5"
-                            value={tableNumber}
-                            onChange={(e) => {
-                              setTableNumber(e.target.value);
-                              if (orderError) setOrderError("");
-                            }}
-                            style={{
-                              width: "100%",
-                              background: "#FFFFFF",
-                              border: !tableNumber.trim() ? "1.5px solid #EF4444" : "1.5px solid #CBD5E1",
-                              borderRadius: "8px",
-                              padding: "9px 12px",
-                              color: "#0F172A",
-                              fontSize: "0.88rem",
-                              fontWeight: "700",
-                              outline: "none"
-                            }}
-                          />
-                        )}
-                      </div>
-                      <div>
-                        <label style={{ fontSize: "0.8rem", color: "#B45309", display: "flex", justifyContent: "space-between", marginBottom: "4px", fontWeight: "700" }}>
-                          <span>Seat No. <span style={{ color: "#EF4444" }}>*</span></span>
-                          {(() => {
-                            const tbl = diningTables.find((t) => String(t.table_number).trim() === String(tableNumber).trim());
-                            return tbl ? <span style={{ color: "#78350F", fontWeight: "600", fontSize: "0.72rem" }}>Max: {tbl.max_seats}</span> : null;
-                          })()}
-                        </label>
-                        {(() => {
-                          const tbl = diningTables.find((t) => String(t.table_number).trim() === String(tableNumber).trim());
-                          if (tbl && tbl.max_seats > 0) {
-                            return (
-                              <select
-                                value={seatNumber}
-                                onChange={(e) => {
-                                  setSeatNumber(e.target.value);
-                                  if (orderError) setOrderError("");
-                                }}
-                                style={{
-                                  width: "100%",
-                                  background: "#FFFFFF",
-                                  border: !seatNumber.trim() ? "1.5px solid #EF4444" : "1.5px solid #CBD5E1",
-                                  borderRadius: "8px",
-                                  padding: "9px 12px",
-                                  color: "#0F172A",
-                                  fontSize: "0.88rem",
-                                  fontWeight: "700",
-                                  outline: "none"
-                                }}
-                              >
-                                <option value="">Select Seat (1 - {tbl.max_seats})...</option>
-                                {Array.from({ length: tbl.max_seats }, (_, i) => String(i + 1)).map((s) => (
-                                  <option key={s} value={s}>
-                                    Seat #{s}
-                                  </option>
-                                ))}
-                              </select>
-                            );
-                          }
-                          return (
-                            <input
-                              type="text"
-                              placeholder="e.g. 1, 2"
-                              value={seatNumber}
-                              onChange={(e) => {
-                                setSeatNumber(e.target.value);
-                                if (orderError) setOrderError("");
-                              }}
-                              style={{
-                                width: "100%",
-                                background: "#FFFFFF",
-                                border: !seatNumber.trim() ? "1.5px solid #EF4444" : "1.5px solid #CBD5E1",
-                                borderRadius: "8px",
-                                padding: "9px 12px",
-                                color: "#0F172A",
-                                fontSize: "0.88rem",
-                                fontWeight: "700",
-                                outline: "none"
-                              }}
-                            />
-                          );
-                        })()}
-                      </div>
-                    </div>
+                    // <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "6px" }}>
+                    //   <div>
+                    //     <label style={{ fontSize: "0.8rem", color: "#B45309", display: "flex", justifyContent: "space-between", marginBottom: "4px", fontWeight: "700" }}>
+                    //       <span>Table No. <span style={{ color: "#EF4444" }}>*</span></span>
+                    //     </label>
+                    //     {diningTables && diningTables.length > 0 ? (
+                    //       <select
+                    //         value={tableNumber}
+                    //         onChange={(e) => {
+                    //           const val = e.target.value;
+                    //           setTableNumber(val);
+                    //           if (orderError) setOrderError("");
+                    //           const tbl = diningTables.find((t) => String(t.table_number).trim() === String(val).trim());
+                    //           if (tbl && seatNumber && parseInt(seatNumber, 10) > tbl.max_seats) {
+                    //             setSeatNumber("1");
+                    //           }
+                    //         }}
+                    //         style={{
+                    //           width: "100%",
+                    //           background: "#FFFFFF",
+                    //           border: !tableNumber.trim() ? "1.5px solid #EF4444" : "1.5px solid #CBD5E1",
+                    //           borderRadius: "8px",
+                    //           padding: "9px 12px",
+                    //           color: "#0F172A",
+                    //           fontSize: "0.88rem",
+                    //           fontWeight: "700",
+                    //           outline: "none"
+                    //         }}
+                    //       >
+                    //         <option value="">Select Table...</option>
+                    //         {diningTables.map((t) => (
+                    //           <option key={t.id} value={t.table_number}>
+                    //             Table #{t.table_number} ({t.max_seats} Seats)
+                    //           </option>
+                    //         ))}
+                    //       </select>
+                    //     ) : (
+                    //       <input
+                    //         type="text"
+                    //         placeholder="e.g. 3, T-5"
+                    //         value={tableNumber}
+                    //         onChange={(e) => {
+                    //           setTableNumber(e.target.value);
+                    //           if (orderError) setOrderError("");
+                    //         }}
+                    //         style={{
+                    //           width: "100%",
+                    //           background: "#FFFFFF",
+                    //           border: !tableNumber.trim() ? "1.5px solid #EF4444" : "1.5px solid #CBD5E1",
+                    //           borderRadius: "8px",
+                    //           padding: "9px 12px",
+                    //           color: "#0F172A",
+                    //           fontSize: "0.88rem",
+                    //           fontWeight: "700",
+                    //           outline: "none"
+                    //         }}
+                    //       />
+                    //     )}
+                    //   </div>
+                    //   <div>
+                    //     <label style={{ fontSize: "0.8rem", color: "#B45309", display: "flex", justifyContent: "space-between", marginBottom: "4px", fontWeight: "700" }}>
+                    //       <span>Seat No. <span style={{ color: "#EF4444" }}>*</span></span>
+                    //       {(() => {
+                    //         const tbl = diningTables.find((t) => String(t.table_number).trim() === String(tableNumber).trim());
+                    //         return tbl ? <span style={{ color: "#78350F", fontWeight: "600", fontSize: "0.72rem" }}>Max: {tbl.max_seats}</span> : null;
+                    //       })()}
+                    //     </label>
+                    //     {(() => {
+                    //       const tbl = diningTables.find((t) => String(t.table_number).trim() === String(tableNumber).trim());
+                    //       if (tbl && tbl.max_seats > 0) {
+                    //         return (
+                    //           <select
+                    //             value={seatNumber}
+                    //             onChange={(e) => {
+                    //               setSeatNumber(e.target.value);
+                    //               if (orderError) setOrderError("");
+                    //             }}
+                    //             style={{
+                    //               width: "100%",
+                    //               background: "#FFFFFF",
+                    //               border: !seatNumber.trim() ? "1.5px solid #EF4444" : "1.5px solid #CBD5E1",
+                    //               borderRadius: "8px",
+                    //               padding: "9px 12px",
+                    //               color: "#0F172A",
+                    //               fontSize: "0.88rem",
+                    //               fontWeight: "700",
+                    //               outline: "none"
+                    //             }}
+                    //           >
+                    //             <option value="">Select Seat (1 - {tbl.max_seats})...</option>
+                    //             {Array.from({ length: tbl.max_seats }, (_, i) => String(i + 1)).map((s) => (
+                    //               <option key={s} value={s}>
+                    //                 Seat #{s}
+                    //               </option>
+                    //             ))}
+                    //           </select>
+                    //         );
+                    //       }
+                    //       return (
+                    //         <input
+                    //           type="text"
+                    //           placeholder="e.g. 1, 2"
+                    //           value={seatNumber}
+                    //           onChange={(e) => {
+                    //             setSeatNumber(e.target.value);
+                    //             if (orderError) setOrderError("");
+                    //           }}
+                    //           style={{
+                    //             width: "100%",
+                    //             background: "#FFFFFF",
+                    //             border: !seatNumber.trim() ? "1.5px solid #EF4444" : "1.5px solid #CBD5E1",
+                    //             borderRadius: "8px",
+                    //             padding: "9px 12px",
+                    //             color: "#0F172A",
+                    //             fontSize: "0.88rem",
+                    //             fontWeight: "700",
+                    //             outline: "none"
+                    //           }}
+                    //         />
+                    //       );
+                    //     })()}
+                    //   </div>
+                    // </div>
                     {(() => {
                       const tbl = diningTables.find((t) => String(t.table_number).trim() === String(tableNumber).trim());
                       if (tbl && seatNumber && (parseInt(seatNumber, 10) < 1 || parseInt(seatNumber, 10) > tbl.max_seats)) {
