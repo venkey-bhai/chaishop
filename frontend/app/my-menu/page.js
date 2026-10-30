@@ -7,9 +7,7 @@ import {
   findCustomerOrders,
   customerEditOrder,
   getMenuCatalog,
-  getBillReceipt,
 } from "../../services/api";
-import { printThermalBill } from "../../utils/thermalPrinter";
 
 function MyMenuContent() {
   const searchParams = useSearchParams();
@@ -20,10 +18,6 @@ function MyMenuContent() {
   const [searchError, setSearchError] = useState("");
   const [orders, setOrders] = useState([]);
   const [hasSearched, setHasSearched] = useState(false);
-
-  // Thermal Bill Receipt Modal state
-  const [thermalReceipt, setThermalReceipt] = useState(null);
-  const [loadingReceiptId, setLoadingReceiptId] = useState(null);
 
   // Active verified customer phone used for authorization
   const [verifiedPhone, setVerifiedPhone] = useState(urlPhone.replace(/\D/g, "").slice(-10));
@@ -342,47 +336,6 @@ function MyMenuContent() {
     }
   }
 
-  // Open thermal bill receipt for printing (80mm/58mm format)
-  async function handleOpenThermalBill(order) {
-    if (!order) return;
-    try {
-      setLoadingReceiptId(order.id);
-      const data = await getBillReceipt(order.id);
-      setThermalReceipt(data);
-    } catch (e) {
-      // Direct reliable fallback formatting from order object
-      setThermalReceipt({
-        shop_name: "ChaiFlow Tea Shop",
-        tagline: "Authentic Spiced Chai & Irani Cafe Favorites",
-        address: "12 Market Square, Station Road",
-        phone: "+91 98840 12345",
-        fssai_license: "21524012000892",
-        order_id: order.id,
-        order_number: order.order_number,
-        daily_token_number: order.daily_token_number,
-        date_time: order.created_at ? new Date(order.created_at).toLocaleString() : new Date().toLocaleString(),
-        customer_name: order.customer_name,
-        customer_phone: order.customer_phone,
-        table_or_counter: order.order_type === "TAKEAWAY" ? "🛍️ Takeaway" : `🍽️ Table #${order.table_number || "—"}${order.seat_number ? ` • Seat #${order.seat_number}` : ""}`,
-        items: (order.items || [])
-          .filter((it) => (it.status || "").toUpperCase() !== "CANCELLED")
-          .map((it) => ({
-            name: it.item_name,
-            quantity: it.quantity,
-            unit_price: Number(it.unit_price || 0),
-            total_price: Number(it.total_price || (it.unit_price * it.quantity)),
-            total: Number(it.total_price || (it.unit_price * it.quantity)),
-            customizations: it.selected_options ? Object.entries(it.selected_options).map(([k, v]) => `${k}: ${v}`).join(", ") : null,
-          })),
-        total_amount: order.total_amount,
-        payment_method: order.payment_method,
-        payment_status: order.payment_status || "PENDING",
-        footer_message: "Thank you for visiting ChaiFlow! Visit again for fresh chai ☕",
-      });
-    } finally {
-      setLoadingReceiptId(null);
-    }
-  }
 
   // Helper for order status badge color
   function getOrderStatusBadge(status) {
@@ -665,6 +618,28 @@ function MyMenuContent() {
                       >
                         {statusBadge.label}
                       </span>
+
+                      {isEligibleToEdit && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditModal(order)}
+                          style={{
+                            background: "#059669",
+                            color: "#FFFFFF",
+                            border: "none",
+                            borderRadius: "8px",
+                            padding: "5px 12px",
+                            fontSize: "0.78rem",
+                            fontWeight: "700",
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                          }}
+                        >
+                          ✏️ Manage Order
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -801,6 +776,7 @@ function MyMenuContent() {
                           Total: ₹{Number(order.total_amount).toFixed(2)}
                         </div>
                       </div>
+
                     </div>
                   </div>
                 </div>
@@ -1183,155 +1159,10 @@ function MyMenuContent() {
           </div>
         )}
 
-        {/* Thermal Bill Receipt Modal (80mm / 58mm Thermal Print) */}
-        {thermalReceipt && (
-          <div
-            data-thermal-receipt-backdrop="true"
-            className="receipt-modal-backdrop"
-            style={{
-              position: "fixed",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: "rgba(15, 23, 42, 0.65)",
-              backdropFilter: "blur(4px)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              zIndex: 9999,
-              padding: "16px",
-            }}
-          >
-            <div
-              data-thermal-receipt="true"
-              className="receipt-card-container"
-              style={{
-                background: "#FFFFFF",
-                borderRadius: "14px",
-                maxWidth: "360px",
-                width: "100%",
-                padding: "22px 18px",
-                fontFamily: "monospace",
-                fontSize: "0.85rem",
-                boxShadow: "0 20px 40px rgba(0,0,0,0.3)",
-                color: "#111827",
-                maxHeight: "90vh",
-                overflowY: "auto",
-              }}
-            >
-              <div style={{ textAlign: "center", borderBottom: "1px dashed #666", paddingBottom: "10px", marginBottom: "10px" }}>
-                <div style={{ fontSize: "1.2rem", fontWeight: "900", letterSpacing: "1px" }}>{thermalReceipt.shop_name || "ChaiFlow Tea Shop"}</div>
-                <div style={{ fontSize: "0.75rem", color: "#444" }}>{thermalReceipt.tagline}</div>
-                <div style={{ fontSize: "0.72rem", color: "#666" }}>{thermalReceipt.address}</div>
-                {thermalReceipt.phone && <div style={{ fontSize: "0.72rem", color: "#666" }}>Phone: {thermalReceipt.phone}</div>}
-                {thermalReceipt.fssai_license && <div style={{ fontSize: "0.7rem", color: "#666" }}>FSSAI: {thermalReceipt.fssai_license}</div>}
-              </div>
-
-              <div style={{ textAlign: "center", background: "#F1F5F9", padding: "6px", borderRadius: "6px", fontWeight: "900", fontSize: "1.2rem", margin: "8px 0" }}>
-                TOKEN #{thermalReceipt.daily_token_number}
-              </div>
-
-              <div style={{ fontSize: "0.75rem", borderBottom: "1px dashed #666", paddingBottom: "8px", marginBottom: "8px", lineHeight: "1.4" }}>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span>Order: <strong>{thermalReceipt.order_number}</strong></span>
-                  <span>{thermalReceipt.date_time}</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span>Customer: {thermalReceipt.customer_name}</span>
-                  <span>{thermalReceipt.table_or_counter}</span>
-                </div>
-              </div>
-
-              {/* Items Table with Dish Price */}
-              <div style={{ borderBottom: "1px dashed #666", paddingBottom: "8px", marginBottom: "8px" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1.1fr 1fr", fontWeight: "800", fontSize: "0.74rem", borderBottom: "1px solid #ccc", paddingBottom: "4px", marginBottom: "6px" }}>
-                  <span>ITEM</span>
-                  <span style={{ textAlign: "center" }}>QTY × RATE</span>
-                  <span style={{ textAlign: "right" }}>AMOUNT</span>
-                </div>
-                {(thermalReceipt.items || []).map((it, idx) => {
-                  const itemTotal = it.total_price != null ? Number(it.total_price) : (it.total != null ? Number(it.total) : (Number(it.unit_price || 0) * Number(it.quantity || 1)));
-                  const unitPrice = it.unit_price != null ? Number(it.unit_price) : (it.quantity ? (itemTotal / it.quantity) : itemTotal);
-                  return (
-                    <div key={idx} style={{ marginBottom: "5px", fontSize: "0.82rem" }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1.1fr 1fr", alignItems: "center" }}>
-                        <span style={{ fontWeight: "700" }}>{it.name}</span>
-                        <span style={{ textAlign: "center", fontSize: "0.75rem", color: "#333" }}>
-                          {it.quantity} × ₹{unitPrice.toFixed(2)}
-                        </span>
-                        <span style={{ textAlign: "right", fontWeight: "800" }}>
-                          ₹{itemTotal.toFixed(2)}
-                        </span>
-                      </div>
-                      {it.customizations && (
-                        <div style={{ fontSize: "0.68rem", color: "#666", fontStyle: "italic" }}>
-                          {it.customizations}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", fontSize: "1.05rem", marginBottom: "6px" }}>
-                <span>NET TOTAL:</span>
-                <span>₹{Number(thermalReceipt.total_amount).toFixed(2)}</span>
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", marginBottom: "10px" }}>
-                <span>Payment Mode:</span>
-                <span><strong>{thermalReceipt.payment_method}</strong> ({thermalReceipt.payment_status || "PAID"})</span>
-              </div>
-
-              <div style={{ textAlign: "center", borderTop: "1px dashed #666", paddingTop: "10px", color: "#666", fontSize: "0.75rem" }}>
-                {thermalReceipt.footer_message || "Thank you! Visit again for fresh chai ☕"}
-              </div>
-
-              <div className="no-print" style={{ marginTop: "16px", display: "flex", gap: "8px" }}>
-                <button
-                  type="button"
-                  onClick={() => printThermalBill(thermalReceipt)}
-                  style={{
-                    flex: 1,
-                    background: "#0F172A",
-                    color: "#FFFFFF",
-                    border: "none",
-                    borderRadius: "8px",
-                    padding: "10px",
-                    fontWeight: "700",
-                    fontSize: "0.85rem",
-                    cursor: "pointer",
-                  }}
-                >
-                  🖨️ Print Thermal Bill (80mm)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setThermalReceipt(null)}
-                  style={{
-                    flex: 1,
-                    background: "#E2E8F0",
-                    color: "#1E293B",
-                    border: "none",
-                    borderRadius: "8px",
-                    padding: "10px",
-                    cursor: "pointer",
-                    fontWeight: "600",
-                    fontSize: "0.85rem",
-                  }}
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </main>
     </div>
   );
 }
-
 export default function MyMenuPage() {
   return (
     <Suspense fallback={<div style={{ padding: "40px", textAlign: "center" }}>Loading My Menu...</div>}>
