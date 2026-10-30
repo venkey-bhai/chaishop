@@ -665,28 +665,6 @@ function MyMenuContent() {
                       >
                         {statusBadge.label}
                       </span>
-
-                      {isEligibleToEdit && (
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEditModal(order)}
-                          style={{
-                            background: "#059669",
-                            color: "#FFFFFF",
-                            border: "none",
-                            borderRadius: "8px",
-                            padding: "5px 12px",
-                            fontSize: "0.78rem",
-                            fontWeight: "700",
-                            cursor: "pointer",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "4px",
-                          }}
-                        >
-                          ✏️ Manage Order
-                        </button>
-                      )}
                     </div>
                   </div>
 
@@ -823,29 +801,6 @@ function MyMenuContent() {
                           Total: ₹{Number(order.total_amount).toFixed(2)}
                         </div>
                       </div>
-
-                      <button
-                        type="button"
-                        onClick={() => handleOpenThermalBill(order)}
-                        disabled={loadingReceiptId === order.id}
-                        style={{
-                          background: "#FFFFFF",
-                          border: "1px solid #CBD5E1",
-                          color: "#1E293B",
-                          borderRadius: "8px",
-                          padding: "6px 12px",
-                          fontSize: "0.78rem",
-                          fontWeight: "700",
-                          cursor: "pointer",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "5px",
-                          boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
-                        }}
-                        title="Print 80mm/58mm thermal receipt"
-                      >
-                        {loadingReceiptId === order.id ? "Loading..." : "🖨️ Thermal Bill"}
-                      </button>
                     </div>
                   </div>
                 </div>
