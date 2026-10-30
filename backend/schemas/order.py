@@ -190,18 +190,23 @@ class OrderCreate(BaseModel):
     def validate_dine_in_table_and_seat(self):
         otype = (self.order_type or "DINE_IN").upper().strip()
         self.order_type = otype
-        if otype == "DINE_IN":
-            tbl = (self.table_number or "").strip()
-            seat = (self.seat_number or "").strip()
-            if not tbl:
-                raise ValueError("Table number is mandatory for dine-in orders.")
-            if not seat:
-                raise ValueError("Seat number is mandatory for dine-in orders.")
-            self.table_number = tbl
-            self.seat_number = seat
-        elif otype == "TAKEAWAY":
-            self.table_number = None
-            self.seat_number = None
+        # Mandatory Table & Seat validation commented out as requested
+        # if otype == "DINE_IN":
+        #     tbl = (self.table_number or "").strip()
+        #     seat = (self.seat_number or "").strip()
+        #     if not tbl:
+        #         raise ValueError("Table number is mandatory for dine-in orders.")
+        #     if not seat:
+        #         raise ValueError("Seat number is mandatory for dine-in orders.")
+        #     self.table_number = tbl
+        #     self.seat_number = seat
+        # elif otype == "TAKEAWAY":
+        #     self.table_number = None
+        #     self.seat_number = None
+        if self.table_number:
+            self.table_number = self.table_number.strip()
+        if self.seat_number:
+            self.seat_number = self.seat_number.strip()
         return self
 
 

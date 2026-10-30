@@ -340,9 +340,9 @@ def create_order(
 
     customer_phone = clean_phone[-10:]
 
-    # Mandatory Table & Seat Capacity Validation for Dine-In (Requirement 4)
-    if (payload.order_type or "").upper() == "DINE_IN":
-        validate_table_and_seat(db, payload.table_number, payload.seat_number)
+    # Mandatory Table & Seat Capacity Validation for Dine-In (Requirement 4) - Commented out as requested
+    # if (payload.order_type or "").upper() == "DINE_IN":
+    #     validate_table_and_seat(db, payload.table_number, payload.seat_number)
 
     # Duplicate Order Prevention via client Idempotency Key (Section 6)
     if payload.idempotency_key:
